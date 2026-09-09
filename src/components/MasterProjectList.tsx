@@ -17,24 +17,30 @@ import {
   CheckCircle2,
   Clock,
   Building2,
+  Trash2,
+  AlertCircle,
 } from "lucide-react";
 import { Project, ProjectStatus, DesignStyle, FinishingGrade } from "../types";
+import { DualScrollTable } from "./DualScrollTable";
 
 interface MasterProjectListProps {
   projects: Project[];
   onOpenWorkspace: (project: Project, tab?: "rab" | "schedule") => void;
   onCreateNewProject: (projectData: Partial<Project>) => void;
+  onDeleteProject?: (projectId: string) => void;
 }
 
 export const MasterProjectList: React.FC<MasterProjectListProps> = ({
   projects,
   onOpenWorkspace,
   onCreateNewProject,
+  onDeleteProject,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [inspectingProject, setInspectingProject] = useState<Project | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
   // New Project Form State
   const defaultNextCode = `PRJ-2026-${String(projects.length + 1).padStart(3, "0")}`;
@@ -243,8 +249,8 @@ export const MasterProjectList: React.FC<MasterProjectListProps> = ({
 
       {/* 4. Master Project Table with Explicit "Edit RAB" and "Schedule" Actions */}
       <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+        <DualScrollTable>
+          <table className="w-full text-left border-collapse text-xs min-w-[950px]">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold select-none">
                 <th className="py-3 px-4 w-32">Project Code</th>
@@ -361,6 +367,18 @@ export const MasterProjectList: React.FC<MasterProjectListProps> = ({
                         >
                           <Eye className="w-4 h-4" />
                         </button>
+
+                        {/* Delete Button */}
+                        {onDeleteProject && (
+                          <button
+                            type="button"
+                            onClick={() => setProjectToDelete(p)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                            title="Hapus Proyek"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -368,7 +386,7 @@ export const MasterProjectList: React.FC<MasterProjectListProps> = ({
               )}
             </tbody>
           </table>
-        </div>
+        </DualScrollTable>
       </div>
 
       {/* 5. CREATE NEW PROJECT MODAL */}
@@ -654,6 +672,54 @@ export const MasterProjectList: React.FC<MasterProjectListProps> = ({
               >
                 <CalendarDays className="w-3.5 h-3.5" />
                 <span>Buka di Schedule</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE PROJECT MODAL */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-scale-up">
+            <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Hapus Proyek</h3>
+                <p className="text-xs text-slate-500">Tindakan ini tidak dapat dibatalkan</p>
+              </div>
+            </div>
+            <div className="p-5 text-xs text-slate-600 space-y-3">
+              <p>
+                Apakah Anda yakin ingin menghapus proyek <span className="font-bold text-slate-900">{projectToDelete.name}</span> ({projectToDelete.projectCode})?
+              </p>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px] flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>Seluruh data estimasi, RAB, dan schedule proyek ini akan dihapus permanen.</span>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setProjectToDelete(null)}
+                className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold cursor-pointer transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteProject) {
+                    onDeleteProject(projectToDelete.id);
+                  }
+                  setProjectToDelete(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Ya, Hapus Proyek</span>
               </button>
             </div>
           </div>

@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Project, RabItemEntry, MasterCostItem, Vendor, ScheduleItem, WeeklyProgressPoint } from "../types";
 import { getRakitcoLogoPngDataUrl } from "./rakitcoLogo";
+import { setupAptosFont } from "./aptosFont";
 
 export interface HeaderMetadata {
   title: string;
@@ -173,6 +174,9 @@ export async function exportRabToPdf(
     format: "a4",
   });
 
+  // Ensure identical font family across exports
+  await setupAptosFont(doc);
+
   const startY = await drawRakitcoLetterhead(doc, {
     title: "Rencana Anggaran Biaya (RAB)",
     projectCode: project.projectCode,
@@ -184,131 +188,251 @@ export async function exportRabToPdf(
     status: project.status,
   });
 
-  // Prepare table rows grouped by Category
+  // Prepare table rows grouped by Header Section (e.g. Lantai 1, Lantai 2, Area Ruang Tamu, etc.)
   const tableBody: any[] = [];
-  const categories = categoriesList.length > 0 ? categoriesList : Array.from(new Set(rabItems.map((i) => i.workCategory)));
+  
+  // Extract ordered unique sections from rabItems
+  const sectionsInItems: string[] = [];
+  rabItems.forEach((it) => {
+    const sec = it.sectionName?.trim() || "Lantai 1";
+    if (!sectionsInItems.includes(sec)) {
+      sectionsInItems.push(sec);
+    }
+  });
+  if (sectionsInItems.length === 0) {
+    sectionsInItems.push("Lantai 1");
+  }
 
-  let itemNo = 1;
+  let globalItemNo = 1;
   let subtotalRealCost = 0;
 
-  categories.forEach((catName) => {
-    const itemsInCat = rabItems.filter((i) => i.workCategory === catName);
-    if (itemsInCat.length === 0) return;
+  const head = [
+    ["No", "Uraian Pekerjaan", "Spesifikasi & Material", "Sat", "Volume", "Harga Satuan", "Total Harga"]
+  ];
 
-    // Category Header row
+  sectionsInItems.forEach((secName, sIdx) => {
+    const itemsInSec = rabItems.filter((i) => (i.sectionName?.trim() || "Lantai 1") === secName);
+    if (itemsInSec.length === 0) return;
+
+    // Header section bar (matching Interior RAB export font size 7.5, bold, padding 2.2)
     tableBody.push([
       {
-        content: `KATEGORI: ${catName.toUpperCase()}`,
-        colSpan: 6,
+        content: secName.toUpperCase(),
+        colSpan: 7,
         styles: {
           fillColor: [241, 245, 249],
           fontStyle: "bold",
-          textColor: [30, 41, 59],
+          textColor: [15, 23, 42],
+          fontSize: 7.5,
+          cellPadding: 2.2,
           halign: "left",
         },
       },
     ]);
 
-    let catTotal = 0;
-    itemsInCat.forEach((item) => {
+    let secTotal = 0;
+    itemsInSec.forEach((item) => {
       const vol = Number(item.volume) || 0;
       const price = Number(item.unitPrice) || 0;
       const lineTotal = item.totalPrice || vol * price;
-      catTotal += lineTotal;
+      secTotal += lineTotal;
       subtotalRealCost += lineTotal;
 
+      const specList = [
+        item.specification,
+        ...(item.specRows || []).map((s) => s.specName),
+      ].filter(Boolean);
+      const specDisplay = specList.length > 1
+        ? specList.map((s, i) => `${i + 1}. ${s}`).join("\n")
+        : (specList[0] || "-");
+
       tableBody.push([
-        itemNo++,
-        item.itemName,
-        item.unit,
-        vol.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        `Rp ${price.toLocaleString("id-ID")}`,
-        `Rp ${lineTotal.toLocaleString("id-ID")}`,
+        { content: globalItemNo++, styles: { halign: "center", fontStyle: "normal" } },
+        { content: item.itemName, styles: { halign: "left", fontStyle: "bold", textColor: [15, 23, 42] } },
+        { content: specDisplay, styles: { halign: "left", textColor: [71, 85, 105], fontSize: 6.8 } },
+        { content: item.unit, styles: { halign: "center" } },
+        { content: vol.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { halign: "right" } },
+        { content: `Rp ${price.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`, styles: { halign: "right" } },
+        { content: `Rp ${lineTotal.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`, styles: { halign: "right", fontStyle: "bold", textColor: [15, 23, 42] } },
       ]);
     });
 
-    // Category Subtotal row
+    // Section Subtotal row (matching Interior RAB export font size 7)
     tableBody.push([
       {
-        content: `Subtotal ${catName}`,
-        colSpan: 5,
-        styles: { halign: "right", fontStyle: "bold", textColor: [71, 85, 105], fillColor: [248, 250, 252] },
+        content: `Subtotal ${secName}`,
+        colSpan: 6,
+        styles: {
+          halign: "right",
+          fontStyle: "bold",
+          textColor: [51, 65, 85],
+          fillColor: [248, 250, 252],
+          fontSize: 7,
+        },
       },
       {
-        content: `Rp ${catTotal.toLocaleString("id-ID")}`,
-        styles: { halign: "right", fontStyle: "bold", textColor: [15, 23, 42], fillColor: [248, 250, 252] },
+        content: `Rp ${secTotal.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`,
+        styles: {
+          halign: "right",
+          fontStyle: "bold",
+          textColor: [15, 23, 42],
+          fillColor: [248, 250, 252],
+          fontSize: 7,
+        },
       },
     ]);
   });
 
-  // RECAP SUMMARY ROWS
-  const ppnVal = subtotalRealCost * 0.11;
-  const grandTotal = subtotalRealCost + ppnVal;
+  // RECAP SUMMARY ROWS (Matching Interior RAB export Executive High-Contrast Layout)
+  const contingencyPercent = project.contingencyPercent || 0;
+  const overheadProfitPercent = project.overheadProfitPercent || 0;
+  const combinedMarkupPercent = contingencyPercent + overheadProfitPercent;
+  const overheadContingenciesValue = subtotalRealCost * (combinedMarkupPercent / 100);
+  const grandTotalExclPpn = subtotalRealCost + overheadContingenciesValue;
+  const usePpn = project.taxPercent !== undefined ? project.taxPercent > 0 : true;
+  const taxAmount = usePpn ? grandTotalExclPpn * 0.11 : 0;
+  const grandTotalInclPpn = grandTotalExclPpn + taxAmount;
 
   tableBody.push([
     {
-      content: "TOTAL NILAI PEKERJAAN",
-      colSpan: 5,
-      styles: { halign: "right", fontStyle: "bold", textColor: [29, 78, 216], fillColor: [239, 246, 255] },
+      content: "TOTAL NILAI PEKERJAAN (SUBTOTAL)",
+      colSpan: 6,
+      styles: { halign: "right", fontStyle: "bold", textColor: [30, 41, 59], fillColor: [241, 245, 249], fontSize: 7.5 },
     },
     {
-      content: `Rp ${subtotalRealCost.toLocaleString("id-ID")}`,
-      styles: { halign: "right", fontStyle: "bold", textColor: [29, 78, 216], fillColor: [239, 246, 255] },
+      content: `Rp ${subtotalRealCost.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`,
+      styles: { halign: "right", fontStyle: "bold", textColor: [15, 23, 42], fillColor: [241, 245, 249], fontSize: 7.5 },
     },
   ]);
 
-  tableBody.push([
-    {
-      content: "PAJAK PERTAMBAHAN NILAI (PPN 11%)",
-      colSpan: 5,
-      styles: { halign: "right", fontStyle: "bold", textColor: [71, 85, 105], fillColor: [248, 250, 252] },
-    },
-    {
-      content: `Rp ${ppnVal.toLocaleString("id-ID")}`,
-      styles: { halign: "right", fontStyle: "bold", textColor: [71, 85, 105], fillColor: [248, 250, 252] },
-    },
-  ]);
+  if (combinedMarkupPercent > 0) {
+    tableBody.push([
+      {
+        content: `OVERHEAD & KONTINJENSI (${combinedMarkupPercent}%)`,
+        colSpan: 6,
+        styles: { halign: "right", fontStyle: "bold", textColor: [146, 64, 14], fillColor: [255, 251, 235], fontSize: 7.5 },
+      },
+      {
+        content: `Rp ${overheadContingenciesValue.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`,
+        styles: { halign: "right", fontStyle: "bold", textColor: [146, 64, 14], fillColor: [255, 251, 235], fontSize: 7.5 },
+      },
+    ]);
+  }
+
+  if (usePpn) {
+    tableBody.push([
+      {
+        content: "PAJAK PERTAMBAHAN NILAI (PPN 11%)",
+        colSpan: 6,
+        styles: { halign: "right", fontStyle: "bold", textColor: [71, 85, 105], fillColor: [248, 250, 252], fontSize: 7.5 },
+      },
+      {
+        content: `Rp ${taxAmount.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`,
+        styles: { halign: "right", fontStyle: "bold", textColor: [15, 23, 42], fillColor: [248, 250, 252], fontSize: 7.5 },
+      },
+    ]);
+  }
 
   tableBody.push([
     {
-      content: "GRAND TOTAL PENAWARAN (TERMASUK PPN)",
-      colSpan: 5,
-      styles: { halign: "right", fontStyle: "bold", textColor: [180, 83, 9], fillColor: [254, 240, 138] },
+      content: `GRAND TOTAL PENAWARAN (${usePpn ? "TERMASUK PPN" : "EXCL. PPN"})`,
+      colSpan: 6,
+      styles: { halign: "right", fontStyle: "bold", textColor: [255, 255, 255], fillColor: [15, 23, 42], fontSize: 8 },
     },
     {
-      content: `Rp ${grandTotal.toLocaleString("id-ID")}`,
-      styles: { halign: "right", fontStyle: "bold", textColor: [180, 83, 9], fillColor: [254, 240, 138] },
+      content: `Rp ${grandTotalInclPpn.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`,
+      styles: { halign: "right", fontStyle: "bold", textColor: [255, 255, 255], fillColor: [15, 23, 42], fontSize: 8 },
     },
   ]);
 
   autoTable(doc, {
     startY: startY + 2,
-    head: [["No", "Uraian Pekerjaan", "Sat", "Volume", "Harga Satuan", "Total Harga"]],
+    head,
     body: tableBody,
-    theme: "striped",
+    theme: "plain",
     styles: {
-      fontSize: 8,
-      cellPadding: 2,
+      fontSize: 7,
+      cellPadding: 2.0,
       textColor: [30, 41, 59],
       lineColor: [226, 232, 240],
       lineWidth: 0.1,
     },
     headStyles: {
-      fillColor: [30, 41, 59],
+      fillColor: [15, 23, 42],
       textColor: [255, 255, 255],
       fontStyle: "bold",
-      fontSize: 8,
+      fontSize: 7.5,
+      cellPadding: 2.4,
+    },
+    alternateRowStyles: {
+      fillColor: [252, 253, 254],
     },
     columnStyles: {
-      0: { halign: "center", cellWidth: 10 },
-      1: { halign: "left", cellWidth: "auto" },
-      2: { halign: "center", cellWidth: 12 },
-      3: { halign: "right", cellWidth: 18 },
-      4: { halign: "right", cellWidth: 28 },
-      5: { halign: "right", cellWidth: 32 },
+      0: { halign: "center", cellWidth: 8 },
+      1: { halign: "left", cellWidth: 55 },
+      2: { halign: "left", cellWidth: 42 },
+      3: { halign: "center", cellWidth: 11 },
+      4: { halign: "right", cellWidth: 16 },
+      5: { halign: "right", cellWidth: 24 },
+      6: { halign: "right", cellWidth: 26 },
     },
     margin: { left: 14, right: 14, bottom: 20 },
   });
+
+  // Executive Signature & Formal Authorization Block (identical to Interior export)
+  const finalY = (doc as any).lastAutoTable?.finalY ?? startY + 50;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  let sigY = finalY + 8;
+  if (sigY + 36 > pageHeight - 16) {
+    doc.addPage();
+    sigY = 22;
+  }
+
+  const marginX = 14;
+  const colWidth = (pageWidth - marginX * 2 - 24) / 2;
+
+  // Left Signature: Estimator / Project Architect
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Diajukan Oleh:", marginX, sigY);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text("PT RAKIT KREASI ABADI", marginX, sigY + 4.5);
+
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.3);
+  doc.line(marginX, sigY + 23, marginX + colWidth, sigY + 23);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.8);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Estimator & Project QS Engineer", marginX, sigY + 27);
+
+  // Right Signature: Client / Owner
+  const clientX = marginX + colWidth + 24;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Disetujui & Dikonfirmasi Oleh:", clientX, sigY);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(project.ownerName ? project.ownerName.toUpperCase() : "KLIEN / PEMILIK PROYEK", clientX, sigY + 4.5);
+
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.3);
+  doc.line(clientX, sigY + 23, clientX + colWidth, sigY + 23);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.8);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Klien / Pemberi Tugas", clientX, sigY + 27);
 
   attachPageNumbersAndFooter(doc);
   doc.save(`RAB_${project.projectCode}_${project.name.replace(/\s+/g, "_")}.pdf`);

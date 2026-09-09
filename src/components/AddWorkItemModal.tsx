@@ -31,6 +31,7 @@ interface AddWorkItemModalProps {
   // Optional: if editing or replacing an existing row in the table
   targetRowId?: string | null;
   onUpdateRowItem?: (rowId: string, item: Partial<RabItemEntry>) => void;
+  targetSectionName?: string;
 }
 
 export const AddWorkItemModal: React.FC<AddWorkItemModalProps> = ({
@@ -41,6 +42,7 @@ export const AddWorkItemModal: React.FC<AddWorkItemModalProps> = ({
   onAddItem,
   targetRowId,
   onUpdateRowItem,
+  targetSectionName,
 }) => {
   const [activeTab, setActiveTab] = useState<"catalog" | "custom">("catalog");
   const [searchQuery, setSearchQuery] = useState("");
@@ -160,6 +162,7 @@ export const AddWorkItemModal: React.FC<AddWorkItemModalProps> = ({
     if (!currentMasterItem || !currentSpecification) return null;
     return {
       id: `row-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      sectionName: targetSectionName || "Lantai 1",
       masterItemId: currentMasterItem.id,
       specId: currentSpecification.id,
       workCategory: currentMasterItem.category,
@@ -184,6 +187,7 @@ export const AddWorkItemModal: React.FC<AddWorkItemModalProps> = ({
     const price = customUnitPrice || 0;
     return {
       id: `row-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      sectionName: targetSectionName || "Lantai 1",
       workCategory: customCategory,
       itemName: customItemName.trim() || "Pekerjaan Kustom",
       specification: customSpecName.trim(),

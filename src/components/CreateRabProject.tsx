@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Trash2,
@@ -17,6 +17,11 @@ import {
   GitBranch,
   X,
   FileText,
+  FolderPlus,
+  Layers,
+  Edit3,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import {
   MasterCostItem,
@@ -26,6 +31,7 @@ import {
 } from "../types";
 import { AddWorkItemModal } from "./AddWorkItemModal";
 import { ExportDropdown } from "./ExportDropdown";
+import { DualScrollTable } from "./DualScrollTable";
 import { exportRabToExcel } from "../utils/excelExport";
 import { exportRabToPdf } from "../utils/pdfExport";
 
@@ -84,7 +90,34 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [modalTargetRowId, setModalTargetRowId] = useState<string | null>(null);
 
+  // Header Section State
+  const [sectionList, setSectionList] = useState<string[]>([
+    "Lantai 1",
+    "Lantai 2",
+  ]);
+  const [targetModalSection, setTargetModalSection] = useState<string>("Lantai 1");
+  const [isAddSectionModalOpen, setIsAddSectionModalOpen] = useState(false);
+  const [newSectionName, setNewSectionName] = useState("");
+  const [isTableMaximized, setIsTableMaximized] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isTableMaximized) {
+        setIsTableMaximized(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isTableMaximized]);
+
   const handleOpenAddModal = () => {
+    setTargetModalSection(sectionList[0] || "Lantai 1");
+    setModalTargetRowId(null);
+    setIsAddModalOpen(true);
+  };
+
+  const handleOpenAddModalForSection = (secName: string) => {
+    setTargetModalSection(secName);
     setModalTargetRowId(null);
     setIsAddModalOpen(true);
   };
@@ -95,7 +128,13 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
   };
 
   const handleAddItemFromModal = (newItem: RabItemEntry) => {
-    setRabRows((prev) => [...prev, newItem]);
+    setRabRows((prev) => [
+      ...prev,
+      {
+        ...newItem,
+        sectionName: newItem.sectionName || targetModalSection || "Lantai 1",
+      },
+    ]);
   };
 
   const handleUpdateRowFromModal = (
@@ -107,10 +146,11 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
     );
   };
 
-  // 3. RAB Entry Items Table
+  // 3. RAB Entry Items Table with Section Support
   const [rabRows, setRabRows] = useState<RabItemEntry[]>([
     {
       id: "row-1",
+      sectionName: "Lantai 1",
       masterItemId: masterItems[0]?.id || "",
       workCategory:
         masterItems[0]?.category || "Structural Works",
@@ -123,6 +163,7 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
     },
     {
       id: "row-2",
+      sectionName: "Lantai 1",
       masterItemId: masterItems[1]?.id || "",
       workCategory:
         masterItems[1]?.category || "Structural Works",
@@ -135,6 +176,7 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
     },
     {
       id: "row-3",
+      sectionName: "Lantai 1",
       masterItemId: masterItems[3]?.id || "",
       workCategory: masterItems[3]?.category || "Wall Finishes",
       itemName: "Pasangan Dinding Bata Ringan (Hebel) t=10cm + Mortar",
@@ -146,6 +188,7 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
     },
     {
       id: "row-4",
+      sectionName: "Lantai 2",
       masterItemId: masterItems[5]?.id || "",
       workCategory:
         masterItems[5]?.category || "Flooring & Floor Finishes",
@@ -158,6 +201,7 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
     },
     {
       id: "row-5",
+      sectionName: "Lantai 2",
       masterItemId: masterItems[11]?.id || "",
       workCategory: masterItems[11]?.category || "Painting & Coatings",
       itemName: "Pengecatan Dinding Interior Acrylic Premium (Jotun Majestic)",
@@ -175,6 +219,18 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
   const [isPpnApplied, setIsPpnApplied] = useState<boolean>(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showCostColumns, setShowCostColumns] = useState(true);
+
+  // Active unique sections maintaining user order
+  const allActiveSections = useMemo(() => {
+    const list = [...sectionList];
+    rabRows.forEach((r) => {
+      const s = r.sectionName?.trim() || "Lantai 1";
+      if (!list.includes(s)) {
+        list.push(s);
+      }
+    });
+    return list.length > 0 ? list : ["Lantai 1"];
+  }, [sectionList, rabRows]);
 
   React.useEffect(() => {
     if (editingProject) {
@@ -197,7 +253,20 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
         setEstimatedDurationWeeks(editingProject.requirements.estimatedDurationWeeks);
       }
 
-      setRabRows([...editingProject.items]);
+      // Extract sections while preserving order
+      const extractedSections: string[] = [];
+      const loadedRows = (editingProject.items || []).map((it) => {
+        const sec = it.sectionName?.trim() || "Lantai 1";
+        if (!extractedSections.includes(sec)) {
+          extractedSections.push(sec);
+        }
+        return {
+          ...it,
+          sectionName: sec,
+        };
+      });
+      setSectionList(extractedSections.length > 0 ? extractedSections : ["Lantai 1"]);
+      setRabRows(loadedRows);
 
       setContingencyPercent(editingProject.contingencyPercent ?? 5.0);
       setOverheadProfitPercent(editingProject.overheadProfitPercent ?? 10.0);
@@ -392,17 +461,105 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
     }
   };
 
-  const handleAddRow = () => {
+  // Section Action Handlers
+  const handleAddSection = (name?: string) => {
+    const finalName = (name || newSectionName).trim();
+    if (!finalName) return;
+    if (sectionList.includes(finalName)) {
+      alert(`Seksi "${finalName}" sudah ada dalam daftar.`);
+      return;
+    }
+    setSectionList((prev) => [...prev, finalName]);
+    // Create an initial row in this new section
     const defaultMaster = masterItems[0];
     const newRow: RabItemEntry = {
+      id: `row-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      sectionName: finalName,
+      masterItemId: defaultMaster?.id || "",
+      specId: defaultMaster?.specifications?.[0]?.id || "",
+      workCategory: defaultMaster?.category || "Structural Works",
+      itemName: defaultMaster?.itemName || "Pekerjaan Baru",
+      specification: defaultMaster?.specifications?.[0]?.specName || "",
+      unit: defaultMaster?.specifications?.[0]?.unit || "m2",
+      volumeReal: 1,
+      wasteFactor: 0,
+      volume: 1,
+      unitPrice: defaultMaster?.specifications?.[0]?.unitPrice || 0,
+      totalPrice: defaultMaster?.specifications?.[0]?.unitPrice || 0,
+      isCustom: true,
+    };
+    setRabRows((prev) => [...prev, newRow]);
+    setNewSectionName("");
+    setIsAddSectionModalOpen(false);
+  };
+
+  const handleRenameSection = (oldName: string, nextName: string) => {
+    if (!nextName.trim()) return;
+    setSectionList((prev) => prev.map((s) => (s === oldName ? nextName : s)));
+    setRabRows((prev) =>
+      prev.map((r) =>
+        (r.sectionName || "Lantai 1") === oldName
+          ? { ...r, sectionName: nextName }
+          : r
+      )
+    );
+  };
+
+  const handleDeleteSection = (secName: string) => {
+    const itemsInSec = rabRows.filter(
+      (r) => (r.sectionName || "Lantai 1") === secName
+    );
+    if (itemsInSec.length > 0) {
+      if (
+        !window.confirm(
+          `Hapus seksi "${secName}" beserta ${itemsInSec.length} item pekerjaan di dalamnya?`
+        )
+      ) {
+        return;
+      }
+    }
+    setSectionList((prev) => prev.filter((s) => s !== secName));
+    setRabRows((prev) =>
+      prev.filter((r) => (r.sectionName || "Lantai 1") !== secName)
+    );
+  };
+
+  const handleAddRowToSection = (secName: string) => {
+    const defaultMaster = masterItems[0];
+    const newRow: RabItemEntry = {
+      id: `row-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      sectionName: secName,
+      masterItemId: defaultMaster?.id || "",
+      specId: defaultMaster?.specifications?.[0]?.id || "",
+      workCategory: defaultMaster?.category || "Structural Works",
+      itemName: defaultMaster?.itemName || "Item Pekerjaan",
+      specification: defaultMaster?.specifications?.[0]?.specName || "",
+      unit: defaultMaster?.specifications?.[0]?.unit || "m2",
+      volumeReal: 1,
+      wasteFactor: 0,
+      volume: 1,
+      unitPrice: defaultMaster?.specifications?.[0]?.unitPrice || 0,
+      totalPrice: defaultMaster?.specifications?.[0]?.unitPrice || 0,
+      isCustom: true,
+    };
+    setRabRows((prev) => [...prev, newRow]);
+  };
+
+  const handleAddRow = () => {
+    const defaultMaster = masterItems[0];
+    const targetSec = allActiveSections[0] || "Lantai 1";
+    const newRow: RabItemEntry = {
       id: `row-${Date.now()}`,
+      sectionName: targetSec,
       masterItemId: defaultMaster?.id || "",
       specId: defaultMaster?.specifications?.[0]?.id || "",
       workCategory: defaultMaster?.category || "Structural Works",
       itemName: defaultMaster?.itemName || "Pilih Pekerjaan dari Master DB...",
       specification: defaultMaster?.specifications?.[0]?.specName || "",
       unit: defaultMaster?.specifications?.[0]?.unit || "m2",
-      volumeReal: 10, wasteFactor: 0, volume: 10,
+      volumeReal: 10,
+      wasteFactor: 0,
+      volume: 10,
       unitPrice: defaultMaster?.specifications?.[0]?.unitPrice || 0,
       totalPrice: (defaultMaster?.specifications?.[0]?.unitPrice || 0) * 10,
       notes: "",
@@ -416,6 +573,48 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
       return;
     }
     setRabRows(rabRows.filter((r) => r.id !== rowId));
+  };
+
+  const handleAddSpecRow = (rowId: string) => {
+    setRabRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const currentSpecs = r.specRows || [];
+        const newSpec = {
+          id: `spec-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          specName: "",
+        };
+        return { ...r, specRows: [...currentSpecs, newSpec] };
+      }),
+    );
+  };
+
+  const handleUpdateSpecRow = (rowId: string, specId: string, val: string) => {
+    setRabRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const currentSpecs = r.specRows || [];
+        return {
+          ...r,
+          specRows: currentSpecs.map((s) =>
+            s.id === specId ? { ...s, specName: val } : s,
+          ),
+        };
+      }),
+    );
+  };
+
+  const handleRemoveSpecRow = (rowId: string, specId: string) => {
+    setRabRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const currentSpecs = r.specRows || [];
+        return {
+          ...r,
+          specRows: currentSpecs.filter((s) => s.id !== specId),
+        };
+      }),
+    );
   };
 
   // Financial Calculations
@@ -793,13 +992,47 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
             </div>
           </label>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg shadow-xs flex flex-col">
+        <div className={
+          isTableMaximized
+            ? "fixed inset-0 z-50 bg-white flex flex-col overflow-hidden shadow-2xl"
+            : "bg-white border border-slate-200 rounded-lg shadow-xs flex flex-col"
+        }>
           {/* Table Header Bar */}
-          <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex justify-between items-center text-xs">
-            <h3 className="font-bold text-xs uppercase tracking-tight text-slate-600">
-              RAB Entry Table (Cost Breakdown Structure)
-            </h3>
-            <div className="flex items-center gap-2">
+          <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex flex-wrap justify-between items-center gap-2 text-xs shrink-0">
+            <div className="flex items-center gap-2.5">
+              <h3 className="font-bold text-xs uppercase tracking-tight text-slate-700 flex items-center gap-2">
+                <span>RAB Entry Table (Cost Breakdown Structure)</span>
+                {isTableMaximized && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                    FULL-SCREEN MODE (ESC TO MINIMIZE)
+                  </span>
+                )}
+              </h3>
+              <span className="text-[10px] text-slate-400 font-medium">
+                ({allActiveSections.length} Seksi Header / {rabRows.length} Total Item)
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {isTableMaximized && (
+                <label className="flex items-center gap-1.5 cursor-pointer bg-white px-2.5 py-1 rounded border border-slate-200 text-xs text-slate-700 font-medium shadow-2xs mr-1">
+                  <span>Show Cost (HPP)</span>
+                  <input
+                    type="checkbox"
+                    checked={showCostColumns}
+                    onChange={() => setShowCostColumns(!showCostColumns)}
+                    className="cursor-pointer"
+                  />
+                </label>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsAddSectionModalOpen(true)}
+                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+                title="Tambah Header Seksi baru (contoh: Lantai 1, Lantai 2, Ruangan A)"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+                <span>+ Header Seksi</span>
+              </button>
               <button
                 type="button"
                 onClick={handleOpenAddModal}
@@ -807,7 +1040,7 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
                 title="Buka Popup Katalog Master DB untuk memilih item pekerjaan"
               >
                 <Plus className="w-3 h-3" />
-                <span>+ Tambah Item (Popup Katalog)</span>
+                <span>+ Tambah Item (Katalog)</span>
               </button>
               <button
                 type="button"
@@ -817,17 +1050,43 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
               >
                 + Baris Cepat
               </button>
+
+              <div className="w-px h-5 bg-slate-300 mx-0.5 hidden sm:block"></div>
+
+              {/* Maximize / Minimize Button */}
+              <button
+                type="button"
+                onClick={() => setIsTableMaximized(!isTableMaximized)}
+                className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shadow-2xs border ${
+                  isTableMaximized
+                    ? "bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"
+                }`}
+                title={isTableMaximized ? "Minimize (Kembali ke tampilan normal - Esc)" : "Maximize (Buka layar penuh untuk editing luas)"}
+              >
+                {isTableMaximized ? (
+                  <>
+                    <Minimize2 className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Minimize</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Maximize</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Table Body - Scrollable Container */}
-          <div className="overflow-x-auto overflow-y-auto max-h-[580px] w-full border-t border-slate-200">
-            <table className={`w-full text-left border-collapse ${showCostColumns ? "min-w-[1380px]" : "min-w-[1100px]"}`}>
+          {/* Table Body - DualScrollTable Container */}
+          <DualScrollTable className={isTableMaximized ? "flex-1 w-full border-t border-slate-200 overflow-auto" : "max-h-[620px] w-full border-t border-slate-200"}>
+            <table className={`w-full text-left border-collapse ${showCostColumns ? "min-w-[1400px]" : "min-w-[1120px]"}`}>
               <thead className="sticky top-0 z-10 bg-slate-50 shadow-2xs">
                 <tr className="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b border-slate-200 select-none">
-                  <th className="py-2.5 px-3 align-top w-12 text-center bg-slate-50 whitespace-nowrap">No</th>
-                  <th className="py-2.5 px-3 align-top min-w-[300px] bg-slate-50 whitespace-nowrap">
-                    Work Item Description (Master DB Combobox)
+                  <th className="py-2.5 px-3 align-top w-14 text-center bg-slate-50 whitespace-nowrap">No</th>
+                  <th className="py-2.5 px-3 align-top min-w-[320px] bg-slate-50 whitespace-nowrap">
+                    Work Item Description &amp; Seksi
                   </th>
                   <th className="py-2.5 px-3 align-top min-w-[240px] bg-slate-50 whitespace-nowrap">Specification</th>
                   <th className="py-2.5 px-3 align-top w-20 text-center bg-slate-50 whitespace-nowrap">Unit</th>
@@ -850,29 +1109,154 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
                 </tr>
               </thead>
               <tbody className="text-xs divide-y divide-slate-100">
-                {rabRows.map((row, idx) => {
-                  const isDropdownActive = activeDropdownRowId === row.id;
-                  const matchingMasterItems = masterItems.filter(
-                    (m) =>
-                      m.itemName
-                        .toLowerCase()
-                        .includes(searchFilter.toLowerCase()) ||
-                      m.itemCode
-                        .toLowerCase()
-                        .includes(searchFilter.toLowerCase()),
+                {allActiveSections.map((secName, secIdx) => {
+                  const itemsInSec = rabRows.filter(
+                    (r) => (r.sectionName?.trim() || "Lantai 1") === secName,
+                  );
+                  const secTotal = itemsInSec.reduce(
+                    (sum, r) => sum + (r.totalPrice || 0),
+                    0,
+                  );
+                  const secCostTotal = itemsInSec.reduce(
+                    (sum, r) => sum + (r.costPrice || 0) * (r.volume || 0),
+                    0,
                   );
 
                   return (
-                    <tr
-                      key={row.id}
-                      className={`hover:bg-slate-50 transition-colors ${isDropdownActive ? "bg-blue-50/50" : ""}`}
-                    >
-                      <td className="p-3 align-top break-words whitespace-normal text-center text-slate-400 font-mono">
-                        {String(idx + 1).padStart(2, "0")}
-                      </td>
+                    <React.Fragment key={`sec-group-${secName}`}>
+                      {/* Section Header Row */}
+                      <tr className="bg-slate-800 text-white border-y border-slate-700 select-none">
+                        <td
+                          colSpan={showCostColumns ? 12 : 8}
+                          className="py-2 px-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1.5 bg-slate-700/80 px-2.5 py-1 rounded border border-slate-600 focus-within:border-blue-400">
+                                <Layers className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                <input
+                                  type="text"
+                                  value={secName}
+                                  onChange={(e) =>
+                                    handleRenameSection(secName, e.target.value)
+                                  }
+                                  className="bg-transparent text-xs font-bold text-white focus:outline-none min-w-[200px]"
+                                  placeholder="Nama Seksi (contoh: Lantai 1, Ruang Tamu)..."
+                                  title="Klik untuk mengubah nama seksi"
+                                />
+                                <Edit3 className="w-3 h-3 text-slate-400" />
+                              </div>
+                              <span className="text-[11px] text-slate-300 font-medium bg-slate-700/60 px-2 py-0.5 rounded">
+                                {itemsInSec.length} Item
+                              </span>
+                            </div>
 
-                      {/* Work Item Searchable Dropdown */}
-                      <td className="p-3 align-top break-words whitespace-normal relative">
+                            <div className="flex items-center gap-3">
+                              <div className="text-right flex items-center gap-1.5">
+                                <span className="text-[10px] uppercase font-semibold text-slate-400">
+                                  Subtotal:
+                                </span>
+                                <span className="text-xs font-bold text-emerald-400 font-mono">
+                                  Rp {secTotal.toLocaleString("id-ID")}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                {allActiveSections.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteSection(secName)}
+                                    className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-700 rounded cursor-pointer transition ml-1"
+                                    title={`Hapus seksi ${secName}`}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Empty state if section has no items */}
+                      {itemsInSec.length === 0 ? (
+                        <tr className="bg-slate-50/60">
+                          <td
+                            colSpan={showCostColumns ? 12 : 8}
+                            className="py-4 text-center text-xs text-slate-400 italic"
+                          >
+                            Belum ada item di seksi &ldquo;{secName}&rdquo;. Klik{" "}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAddModalForSection(secName)}
+                              className="text-blue-600 font-semibold underline hover:text-blue-700 cursor-pointer"
+                            >
+                              + Item (Katalog)
+                            </button>{" "}
+                            atau{" "}
+                            <button
+                              type="button"
+                              onClick={() => handleAddRowToSection(secName)}
+                              className="text-slate-700 font-semibold underline hover:text-slate-900 cursor-pointer"
+                            >
+                              + Baris Cepat
+                            </button>{" "}
+                            untuk menambahkan pekerjaan.
+                          </td>
+                        </tr>
+                      ) : (
+                        itemsInSec.map((row, itemIdx) => {
+                          const isDropdownActive = activeDropdownRowId === row.id;
+                          const matchingMasterItems = masterItems.filter(
+                            (m) =>
+                              m.itemName
+                                .toLowerCase()
+                                .includes(searchFilter.toLowerCase()) ||
+                              m.itemCode
+                                .toLowerCase()
+                                .includes(searchFilter.toLowerCase()),
+                          );
+
+                          return (
+                            <React.Fragment key={row.id}>
+                              <tr
+                                className={`hover:bg-slate-50 transition-colors ${isDropdownActive ? "bg-blue-50/50" : ""}`}
+                              >
+                              <td className="p-3 align-top break-words whitespace-normal text-center text-slate-500 font-mono font-bold text-[11px]">
+                                {secIdx + 1}.{itemIdx + 1}
+                              </td>
+
+                              {/* Work Item Searchable Dropdown */}
+                              <td className="p-3 align-top break-words whitespace-normal relative">
+                                <div className="flex items-center justify-between gap-1 mb-1.5">
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {row.workCategory}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[9px] text-slate-400 font-medium">Seksi:</span>
+                                    <select
+                                      value={row.sectionName || secName}
+                                      onChange={(e) => {
+                                        const targetSec = e.target.value;
+                                        setRabRows((prev) =>
+                                          prev.map((r) =>
+                                            r.id === row.id
+                                              ? { ...r, sectionName: targetSec }
+                                              : r,
+                                          ),
+                                        );
+                                      }}
+                                      className="text-[10px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 cursor-pointer"
+                                      title="Pindahkan item ke seksi lain"
+                                    >
+                                      {allActiveSections.map((s) => (
+                                        <option key={s} value={s}>
+                                          {s}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
                         <div className="relative">
                           <div className="flex items-center">
                             <input
@@ -1175,31 +1559,186 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </td>
+                            </tr>
+
+                            {/* Additional Sub-Spec Rows */}
+                            {row.specRows &&
+                              row.specRows.map((spc, spcIdx) => (
+                                <tr
+                                  key={spc.id}
+                                  className="bg-slate-50/70 border-b border-dashed border-slate-200"
+                                >
+                                  <td className="p-2 text-center text-slate-400 font-mono text-[10px]">
+                                    {secIdx + 1}.{itemIdx + 1}.{spcIdx + 1}
+                                  </td>
+                                  <td className="p-1.5 pl-6 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRemoveSpecRow(row.id, spc.id)
+                                      }
+                                      className="text-slate-400 hover:text-red-600 p-1 cursor-pointer inline-flex items-center gap-1 text-[10px]"
+                                      title="Hapus Sub-Row Spec"
+                                    >
+                                      <Trash2 className="w-3 h-3 text-red-400" />
+                                      <span className="text-[9px] text-slate-400 hover:text-red-600">
+                                        Hapus
+                                      </span>
+                                    </button>
+                                  </td>
+                                  <td className="p-1.5">
+                                    <input
+                                      type="text"
+                                      value={spc.specName}
+                                      onChange={(e) =>
+                                        handleUpdateSpecRow(
+                                          row.id,
+                                          spc.id,
+                                          e.target.value,
+                                        )
+                                      }
+                                      placeholder="Tulis spesifikasi tambahan / material / merk..."
+                                      className="w-full border border-slate-300 bg-white rounded px-2 py-1 text-[11px] focus:outline-none focus:border-blue-500 font-medium text-slate-800 shadow-2xs"
+                                    />
+                                  </td>
+                                  <td className="p-2 text-center text-slate-300">
+                                    -
+                                  </td>
+                                  {showCostColumns && (
+                                    <>
+                                      <td className="p-2 text-center text-slate-300">
+                                        -
+                                      </td>
+                                      <td className="p-2 text-center text-slate-300">
+                                        -
+                                      </td>
+                                      <td className="p-2 text-center text-slate-300">
+                                        -
+                                      </td>
+                                      <td className="p-2 text-center text-slate-300">
+                                        -
+                                      </td>
+                                    </>
+                                  )}
+                                  <td className="p-2 text-center text-slate-300">
+                                    -
+                                  </td>
+                                  <td className="p-2 text-center text-slate-300">
+                                    -
+                                  </td>
+                                  <td className="p-2 text-center text-slate-300">
+                                    -
+                                  </td>
+                                  <td className="p-2"></td>
+                                </tr>
+                              ))}
+
+                            {/* Row action bar with + ADD SPEC ROW matching Interior RAB Draft */}
+                            <tr className="bg-white border-b border-slate-200">
+                              <td
+                                colSpan={showCostColumns ? 12 : 8}
+                                className="py-1.5 px-4 pl-12 bg-slate-50/30"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddSpecRow(row.id)}
+                                    className="text-[10px] font-bold text-slate-500 bg-white hover:bg-slate-100 hover:text-emerald-700 border border-slate-200 px-3 py-1 rounded transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                    title="Tambah baris spesifikasi tambahan pada item ini"
+                                  >
+                                    <Plus className="w-3 h-3 text-emerald-600" />{" "}
+                                    + ADD SPEC ROW
+                                  </button>
+                                  <div className="w-px h-3.5 bg-slate-200" />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveRow(row.id)}
+                                    className="text-[10px] font-bold text-slate-400 hover:text-red-600 transition cursor-pointer flex items-center gap-1"
+                                    title="Hapus item pekerjaan ini"
+                                  >
+                                    <Trash2 className="w-3 h-3" /> HAPUS ITEM
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          </React.Fragment>
+                        );
+                      })
+                    )}
+
+                    {/* Section Action Bar: + ADD NEW WORK ITEM mengacu pada RAB Draft Interior */}
+                    <tr className="bg-slate-50/60 border-b border-slate-200">
+                      <td
+                        colSpan={showCostColumns ? 12 : 8}
+                        className="py-2.5 px-4 pl-12"
+                      >
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAddModalForSection(secName)}
+                            className="text-[11px] font-bold text-slate-700 bg-white hover:bg-slate-100 hover:text-blue-700 px-4 py-2 rounded transition cursor-pointer flex items-center gap-1.5 border border-slate-300 shadow-xs"
+                            title={`Tambah item pekerjaan ke ${secName}`}
+                          >
+                            <Plus className="w-3.5 h-3.5 text-blue-600" /> + ADD
+                            NEW WORK ITEM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddRowToSection(secName)}
+                            className="text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:bg-white px-3 py-2 rounded transition cursor-pointer flex items-center gap-1 border border-transparent hover:border-slate-300"
+                            title={`Tambah baris kosong ke ${secName}`}
+                          >
+                            + Baris Kosong
+                          </button>
+                        </div>
+                      </td>
                     </tr>
+
+                      {/* Section Subtotal Row */}
+                      <tr className="bg-slate-100/90 border-b-2 border-slate-300 font-semibold text-xs">
+                        <td
+                          colSpan={showCostColumns ? 7 : 5}
+                          className="py-2 px-3 text-right text-slate-600 font-semibold"
+                        >
+                          Subtotal {secName}:
+                        </td>
+                        {showCostColumns && (
+                          <>
+                            <td className="py-2 px-3 text-right text-xs font-mono text-slate-400 bg-rose-50/30">
+                              -
+                            </td>
+                            <td className="py-2 px-3 text-right text-xs font-mono font-bold text-rose-700 bg-rose-50/30">
+                              Rp {secCostTotal.toLocaleString("id-ID")}
+                            </td>
+                          </>
+                        )}
+                        <td className="py-2 px-3 text-right text-xs font-mono text-slate-400">
+                          -
+                        </td>
+                        <td className="py-2 px-3 text-right text-xs font-mono font-bold text-emerald-700">
+                          Rp {secTotal.toLocaleString("id-ID")}
+                        </td>
+                        <td className="py-2 px-3"></td>
+                      </tr>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
             </table>
-          </div>
+          </DualScrollTable>
 
           {/* Table Bottom Action Toolbar */}
           <div className="bg-slate-50 border-t border-slate-200 px-4 py-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleOpenAddModal}
-                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Tambah Item Pekerjaan</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleAddRow}
-                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded text-xs font-medium cursor-pointer transition"
-              >
-                + Baris Kosong
-              </button>
+              <span className="text-xs font-semibold text-slate-600">
+                Active Revision:
+              </span>
+              <span className="px-2 py-0.5 rounded bg-white text-blue-700 font-mono text-xs font-bold border border-slate-300">
+                {currentActiveRev}
+              </span>
+              <span className="text-xs text-slate-400 font-medium">
+                ({editingProject?.title || "RAB Project Draft"})
+              </span>
             </div>
 
             <div className="flex items-center gap-4 text-xs font-semibold text-slate-700">
@@ -1280,6 +1819,15 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
             </div>
           </div>
         </div>
+
+        {/* ADD NEW SECTION BUTTON mengacu pada RAB Draft Interior */}
+        <button
+          type="button"
+          onClick={() => setIsAddSectionModalOpen(true)}
+          className="flex items-center gap-2 px-6 py-2.5 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 font-bold hover:bg-white hover:text-blue-600 hover:border-blue-400 transition cursor-pointer text-xs shadow-2xs"
+        >
+          <Plus className="w-4 h-4" /> ADD NEW SECTION (E.g. Lantai 1, Lantai 2, MEP, Interior)
+        </button>
 
         {/* HIGH DENSITY BOTTOM WIDGETS */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1421,8 +1969,116 @@ export const CreateRabProject: React.FC<CreateRabProjectProps> = ({
         categoryMargins={categoryMargins}
         onAddItem={handleAddItemFromModal}
         targetRowId={modalTargetRowId}
+        targetSectionName={targetModalSection}
         onUpdateRowItem={handleUpdateRowFromModal}
       />
+
+      {/* ADD SECTION POPUP MODAL DIALOG */}
+      {isAddSectionModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-scale-up">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-blue-600 rounded-md text-white">
+                  <FolderPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Tambah Header Seksi</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Kelompokkan item pekerjaan (contoh: Lantai 1, Lantai 2, Ruangan A)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddSectionModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Pilih Cepat Nama Seksi Standar:
+                </label>
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                  {[
+                    "Lantai 1",
+                    "Lantai 2",
+                    "Lantai 3",
+                    "Lantai Dasar & Basement",
+                    "Area Ruang Tamu & Foyer",
+                    "Area Kamar Tidur Utama",
+                    "Area Kamar Tidur Anak",
+                    "Area Dapur & Pantry",
+                    "Area Kamar Mandi & Toilet",
+                    "Area Ruang Kerja / Kantor",
+                    "Pekerjaan Façade & Eksterior",
+                    "Balkon & Rooftop",
+                    "Landscape & Taman",
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setNewSectionName(preset);
+                      }}
+                      className={`px-2 py-1 rounded text-xs transition cursor-pointer font-medium ${
+                        newSectionName === preset
+                          ? "bg-blue-600 text-white font-semibold shadow-xs"
+                          : "bg-white text-slate-700 border border-slate-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nama Header Seksi:
+                </label>
+                <input
+                  type="text"
+                  value={newSectionName}
+                  onChange={(e) => setNewSectionName(e.target.value)}
+                  placeholder="Contoh: Lantai 1 atau Ruang Tamu..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-semibold text-slate-800"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddSection();
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddSectionModalOpen(false)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium cursor-pointer transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddSection()}
+                  disabled={!newSectionName.trim()}
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambahkan Seksi</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SAVE AS (NEW REVISION) POPUP DIALOG */}
       {isSaveAsModalOpen && (

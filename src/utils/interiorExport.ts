@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import ExcelJS from "exceljs";
 import { InteriorProject, InteriorRABRevision, InteriorRABSection } from "../types";
 import { drawRakitcoLetterhead, attachPageNumbersAndFooter } from "./pdfExport";
+import { setupAptosFont } from "./aptosFont";
 
 function downloadWorkbook(workbook: ExcelJS.Workbook, filename: string) {
   workbook.xlsx.writeBuffer().then((buffer) => {
@@ -18,6 +19,44 @@ function downloadWorkbook(workbook: ExcelJS.Workbook, filename: string) {
   });
 }
 
+// ---------------- EXCEL EXPORT STYLES & HELPERS ----------------
+const HEADER_FILL: ExcelJS.Fill = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb: "FF1E293B" }, // Slate 800
+};
+
+const HEADER_INTERNAL_FILL: ExcelJS.Fill = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb: "FF334155" }, // Slate 700
+};
+
+const CATEGORY_FILL: ExcelJS.Fill = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb: "FFE2E8F0" }, // Slate 200
+};
+
+const SUMMARY_FILL: ExcelJS.Fill = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb: "FFF1F5F9" }, // Slate 100
+};
+
+const GRAND_TOTAL_FILL: ExcelJS.Fill = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb: "FFFEF3C7" }, // Amber 100
+};
+
+const THIN_BORDER: Partial<ExcelJS.Borders> = {
+  top: { style: "thin", color: { argb: "FFCBD5E1" } },
+  left: { style: "thin", color: { argb: "FFCBD5E1" } },
+  bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+  right: { style: "thin", color: { argb: "FFCBD5E1" } },
+};
+
 // ---------------- EXCEL EXPORT ----------------
 export async function exportInteriorToExcel(
   project: InteriorProject,
@@ -25,72 +64,713 @@ export async function exportInteriorToExcel(
   includeInternal: boolean
 ) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "RAKITCO Engine";
-  const sheet = workbook.addWorksheet("Interior RAB");
+  workbook.creator = "RAKITCO Construction Engine";
+  workbook.created = new Date();
 
-  sheet.columns = includeInternal 
-    ? [
-        { header: "No", width: 5 },
-        { header: "Item Description", width: 30 },
-        { header: "Specification", width: 30 },
-        { header: "Unit", width: 10 },
-        { header: "Qty", width: 10 },
-        { header: "Unit Price (Sell)", width: 20 },
-        { header: "Amount (Sell)", width: 20 },
-        { header: "Length (L)", width: 12 },
-        { header: "Width (W)", width: 12 },
-        { header: "Height (H)", width: 12 },
-        { header: "Factor", width: 12 },
-        { header: "Model", width: 15 },
-        { header: "Base Cost / Unit", width: 20 },
-        { header: "Base Amount", width: 20 },
-        { header: "Total Base (HPP)", width: 20 },
-        { header: "% Profit", width: 12 }
-      ]
-    : [
-        { header: "No", width: 5 },
-        { header: "Item Description", width: 40 },
-        { header: "Specification", width: 40 },
-        { header: "Unit", width: 10 },
-        { header: "Qty", width: 10 },
-        { header: "Unit Price", width: 25 },
-        { header: "Total Amount", width: 25 }
-      ];
-
-  revision.sections.forEach((sec, sIdx) => {
-    const subRow = sheet.addRow(
-      includeInternal
-        ? ["", sec.sectionName, "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
-        : ["", sec.sectionName, "", "", "", "", ""]
-    );
-    subRow.font = { bold: true };
-
-    sec.items.forEach((item, iIdx) => {
-      // Calculate item values
-      const baseTotal = item.specs.reduce((sum, spc) => sum + (spc.length_l > 0 && spc.height_h > 0 ? (spc.length_l * spc.height_h * spc.factor) : (item.qty * spc.factor)) * spc.baseCostUnitPrice, 0);
-      const itemMargin = item.profitMarginPercent !== undefined ? item.profitMarginPercent : sec.profitMarginPercent;
-      const sellUnit = baseTotal * (1 + itemMargin / 100);
-      const sellAmount = sellUnit * item.qty;
-
-      const mainRow = sheet.addRow(
-        includeInternal
-          ? [iIdx + 1, item.description, "", item.unit, item.qty, sellUnit, sellAmount, "", "", "", "", "", "", "", baseTotal, `${itemMargin}%`]
-          : [iIdx + 1, item.description, "", item.unit, item.qty, sellUnit, sellAmount]
-      );
-      mainRow.font = { bold: true };
-
-      item.specs.forEach((spc) => {
-        const spcBaseAmt = (spc.length_l > 0 && spc.height_h > 0 ? (spc.length_l * spc.height_h * spc.factor) : (item.qty * spc.factor)) * spc.baseCostUnitPrice;
-        sheet.addRow(
-          includeInternal
-            ? ["", "", spc.specName, "", "", "", "", spc.length_l, spc.width_w, spc.height_h, spc.factor, spc.model, spc.baseCostUnitPrice, spcBaseAmt, "", ""]
-            : ["", "", spc.specName, "", "", "", ""]
-        );
-      });
-    });
+  const sheetName = includeInternal ? "RAB Interior (Analisis HPP)" : "RAB Interior (Penawaran)";
+  const sheet = workbook.addWorksheet(sheetName, {
+    views: [{ showGridLines: true }],
   });
 
-  downloadWorkbook(workbook, `RAB_Interior_${project.projectCode}_${revision.name}.xlsx`);
+  const lastColLetter = includeInternal ? "P" : "G";
+  const numCols = includeInternal ? 16 : 7;
+
+  // 1. Title Block
+  sheet.mergeCells(`A1:${lastColLetter}1`);
+  sheet.getCell("A1").value = "RENCANA ANGGARAN BIAYA (RAB) - INTERIOR FIT-OUT";
+  sheet.getCell("A1").font = { name: "Segoe UI", size: 14, bold: true, color: { argb: "FF0F172A" } };
+
+  sheet.mergeCells(`A2:${lastColLetter}2`);
+  sheet.getCell("A2").value = includeInternal 
+    ? "RAKITCO Interior Architecture • Analisis HPP & Margin Aktif (Dynamic Formulas)"
+    : "RAKITCO Interior Architecture • Rincian Penawaran Klien (Active Formulas)";
+  sheet.getCell("A2").font = { name: "Segoe UI", size: 10, italic: true, color: { argb: "FF64748B" } };
+
+  // 2. Metadata Block
+  const rightColKey = includeInternal ? "J" : "E";
+  const rightValKey = includeInternal ? "K" : "F";
+
+  sheet.getCell("A4").value = "Proyek:";
+  sheet.getCell("B4").value = project.name;
+  sheet.getCell(`${rightColKey}4`).value = "Kode Proyek:";
+  sheet.getCell(`${rightValKey}4`).value = project.projectCode;
+
+  sheet.getCell("A5").value = "Klien / Pemilik:";
+  sheet.getCell("B5").value = project.ownerName || "-";
+  sheet.getCell(`${rightColKey}5`).value = "Tanggal Dokumen:";
+  sheet.getCell(`${rightValKey}5`).value = revision.date || new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+
+  sheet.getCell("A6").value = "Lokasi Proyek:";
+  sheet.getCell("B6").value = project.location || "-";
+  sheet.getCell(`${rightColKey}6`).value = "Revisi / Status:";
+  sheet.getCell(`${rightValKey}6`).value = `${revision.name || "Rev.01"} (${project.status || "Draft"})`;
+
+  ["A4", "A5", "A6", `${rightColKey}4`, `${rightColKey}5`, `${rightColKey}6`].forEach((c) => {
+    sheet.getCell(c).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FF475569" } };
+  });
+
+  // 3. Table Headers
+  const headerRowIdx = 8;
+  const headers = includeInternal
+    ? [
+        "No",
+        "Item Description",
+        "Specification",
+        "Unit",
+        "Qty",
+        "Unit Price (Sell)",
+        "Amount (Sell)",
+        "Length (L)",
+        "Width (W)",
+        "Height (H)",
+        "Factor",
+        "Model",
+        "Base Cost / Unit",
+        "Base Amount",
+        "Total Base (HPP)",
+        "% Profit",
+      ]
+    : [
+        "No",
+        "Item Description",
+        "Specification",
+        "Unit",
+        "Qty",
+        "Unit Price",
+        "Total Amount",
+      ];
+
+  const headerRow = sheet.getRow(headerRowIdx);
+  headers.forEach((h, idx) => {
+    const cell = headerRow.getCell(idx + 1);
+    cell.value = h;
+    cell.fill = idx >= 7 && idx <= 13 ? HEADER_INTERNAL_FILL : HEADER_FILL;
+    cell.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: idx === 0 || idx === 3 ? "center" : idx >= 4 ? "right" : "left",
+    };
+    cell.border = THIN_BORDER;
+  });
+  headerRow.height = 24;
+
+  let currentRowIdx = 9;
+  const sectionSubtotalRows: { rowIdx: number; secName: string }[] = [];
+
+  revision.sections.forEach((sec, sIdx) => {
+    const startSectionRow = currentRowIdx;
+    const itemParentRows: number[] = [];
+
+    // Section Header Row
+    const secRow = sheet.getRow(currentRowIdx);
+    if (includeInternal) {
+      sheet.mergeCells(`A${currentRowIdx}:E${currentRowIdx}`);
+      secRow.getCell(1).value = sec.sectionName.toUpperCase();
+      secRow.getCell(1).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FF1E293B" } };
+      secRow.getCell(1).fill = CATEGORY_FILL;
+      secRow.getCell(1).border = THIN_BORDER;
+    } else {
+      sheet.mergeCells(`A${currentRowIdx}:F${currentRowIdx}`);
+      secRow.getCell(1).value = sec.sectionName.toUpperCase();
+      secRow.getCell(1).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FF1E293B" } };
+      secRow.getCell(1).fill = CATEGORY_FILL;
+      secRow.getCell(1).border = THIN_BORDER;
+    }
+    currentRowIdx++;
+
+    sec.items.forEach((item, iIdx) => {
+      const parentRowIdx = currentRowIdx;
+      itemParentRows.push(parentRowIdx);
+      const row = sheet.getRow(parentRowIdx);
+
+      const firstSpec = item.specs[0] || {
+        id: "spc-0",
+        specName: "-",
+        length_l: 0,
+        width_w: 0,
+        height_h: 0,
+        factor: 1,
+        model: "-",
+        baseCostUnitPrice: 0,
+      };
+
+      const itemMargin = item.profitMarginPercent !== undefined ? item.profitMarginPercent : (sec.profitMarginPercent || 30);
+      const parentQty = Number(item.qty) || 1;
+
+      // Col A: No
+      row.getCell(1).value = `${sIdx + 1}.${iIdx + 1}`;
+      row.getCell(1).alignment = { horizontal: "center" };
+
+      // Col B: Description
+      row.getCell(2).value = item.description;
+
+      // Col C: Spec
+      row.getCell(3).value = firstSpec.specName;
+
+      // Col D: Unit
+      row.getCell(4).value = item.unit;
+      row.getCell(4).alignment = { horizontal: "center" };
+
+      // Col E: Qty
+      row.getCell(5).value = parentQty;
+      row.getCell(5).numFmt = "#,##0.00";
+      row.getCell(5).alignment = { horizontal: "right" };
+
+      if (includeInternal) {
+        // Internal Specs for Spec 0
+        // Col H: Length
+        row.getCell(8).value = Number(firstSpec.length_l) || 0;
+        row.getCell(8).numFmt = "#,##0.00";
+        row.getCell(8).alignment = { horizontal: "right" };
+
+        // Col I: Width
+        row.getCell(9).value = Number(firstSpec.width_w) || 0;
+        row.getCell(9).numFmt = "#,##0.00";
+        row.getCell(9).alignment = { horizontal: "right" };
+
+        // Col J: Height
+        row.getCell(10).value = Number(firstSpec.height_h) || 0;
+        row.getCell(10).numFmt = "#,##0.00";
+        row.getCell(10).alignment = { horizontal: "right" };
+
+        // Col K: Factor
+        row.getCell(11).value = Number(firstSpec.factor) || 1.0;
+        row.getCell(11).numFmt = "#,##0.00";
+        row.getCell(11).alignment = { horizontal: "right" };
+
+        // Col L: Model
+        row.getCell(12).value = firstSpec.model || "-";
+        row.getCell(12).alignment = { horizontal: "center" };
+
+        // Col M: Base Cost / Unit
+        const baseCost0 = Number(firstSpec.baseCostUnitPrice) || 0;
+        row.getCell(13).value = baseCost0;
+        row.getCell(13).numFmt = '"Rp "#,##0';
+        row.getCell(13).alignment = { horizontal: "right" };
+
+        // Col N: Base Amount (DYNAMIC FORMULA: =IF(AND(H>0,J>0), H*J*K*M, E*K*M))
+        const isVol0 = (firstSpec.length_l || 0) > 0 && (firstSpec.height_h || 0) > 0;
+        const calcBaseAmt0 = isVol0
+          ? firstSpec.length_l * firstSpec.height_h * firstSpec.factor * baseCost0
+          : parentQty * firstSpec.factor * baseCost0;
+
+        row.getCell(14).value = {
+          formula: `IF(AND(H${parentRowIdx}>0,J${parentRowIdx}>0),H${parentRowIdx}*J${parentRowIdx}*K${parentRowIdx}*M${parentRowIdx},E${parentRowIdx}*K${parentRowIdx}*M${parentRowIdx})`,
+          result: calcBaseAmt0,
+        };
+        row.getCell(14).numFmt = '"Rp "#,##0';
+        row.getCell(14).alignment = { horizontal: "right" };
+
+        currentRowIdx++;
+
+        // Any additional spec rows for this item
+        const additionalSpecs = item.specs.slice(1);
+        const allSpecRowIndices = [parentRowIdx];
+
+        additionalSpecs.forEach((spc) => {
+          const subRowIdx = currentRowIdx;
+          allSpecRowIndices.push(subRowIdx);
+          const subRow = sheet.getRow(subRowIdx);
+
+          subRow.getCell(1).value = "";
+          subRow.getCell(2).value = `  ↳ ${spc.specName}`;
+          subRow.getCell(2).font = { name: "Segoe UI", size: 8, italic: true, color: { argb: "FF64748B" } };
+
+          subRow.getCell(3).value = spc.specName;
+          subRow.getCell(4).value = "-";
+          subRow.getCell(4).alignment = { horizontal: "center" };
+          subRow.getCell(5).value = "-";
+          subRow.getCell(5).alignment = { horizontal: "center" };
+
+          subRow.getCell(6).value = "-";
+          subRow.getCell(7).value = "-";
+
+          // Col H: Length
+          subRow.getCell(8).value = Number(spc.length_l) || 0;
+          subRow.getCell(8).numFmt = "#,##0.00";
+          subRow.getCell(8).alignment = { horizontal: "right" };
+
+          // Col I: Width
+          subRow.getCell(9).value = Number(spc.width_w) || 0;
+          subRow.getCell(9).numFmt = "#,##0.00";
+          subRow.getCell(9).alignment = { horizontal: "right" };
+
+          // Col J: Height
+          subRow.getCell(10).value = Number(spc.height_h) || 0;
+          subRow.getCell(10).numFmt = "#,##0.00";
+          subRow.getCell(10).alignment = { horizontal: "right" };
+
+          // Col K: Factor
+          subRow.getCell(11).value = Number(spc.factor) || 1.0;
+          subRow.getCell(11).numFmt = "#,##0.00";
+          subRow.getCell(11).alignment = { horizontal: "right" };
+
+          // Col L: Model
+          subRow.getCell(12).value = spc.model || "-";
+          subRow.getCell(12).alignment = { horizontal: "center" };
+
+          // Col M: Base Cost / Unit
+          const spcBaseCost = Number(spc.baseCostUnitPrice) || 0;
+          subRow.getCell(13).value = spcBaseCost;
+          subRow.getCell(13).numFmt = '"Rp "#,##0';
+          subRow.getCell(13).alignment = { horizontal: "right" };
+
+          // Col N: Base Amount (DYNAMIC FORMULA referencing parent Qty at E${parentRowIdx})
+          const isVolSub = (spc.length_l || 0) > 0 && (spc.height_h || 0) > 0;
+          const calcBaseAmtSub = isVolSub
+            ? spc.length_l * spc.height_h * spc.factor * spcBaseCost
+            : parentQty * spc.factor * spcBaseCost;
+
+          subRow.getCell(14).value = {
+            formula: `IF(AND(H${subRowIdx}>0,J${subRowIdx}>0),H${subRowIdx}*J${subRowIdx}*K${subRowIdx}*M${subRowIdx},E$${parentRowIdx}*K${subRowIdx}*M${subRowIdx})`,
+            result: calcBaseAmtSub,
+          };
+          subRow.getCell(14).numFmt = '"Rp "#,##0';
+          subRow.getCell(14).alignment = { horizontal: "right" };
+
+          subRow.getCell(15).value = "-";
+          subRow.getCell(16).value = "-";
+
+          for (let c = 1; c <= 16; c++) {
+            subRow.getCell(c).border = THIN_BORDER;
+            subRow.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+          }
+          currentRowIdx++;
+        });
+
+        // Now set Col O, P, F, G on the Parent Row
+        // Col O: Total Base (HPP) = SUM(N{firstSpec}:N{lastSpec})
+        const baseHppSumFormula = `SUM(N${allSpecRowIndices[0]}:N${allSpecRowIndices[allSpecRowIndices.length - 1]})`;
+        const expectedBaseTotal = item.specs.reduce((sum, spc) => {
+          const isVol = (spc.length_l || 0) > 0 && (spc.height_h || 0) > 0;
+          const effQty = isVol ? spc.length_l * spc.height_h * spc.factor : parentQty * spc.factor;
+          return sum + effQty * (spc.baseCostUnitPrice || 0);
+        }, 0);
+
+        row.getCell(15).value = {
+          formula: baseHppSumFormula,
+          result: expectedBaseTotal,
+        };
+        row.getCell(15).numFmt = '"Rp "#,##0';
+        row.getCell(15).alignment = { horizontal: "right" };
+        row.getCell(15).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFB45309" } }; // Amber 700
+
+        // Col P: % Profit
+        row.getCell(16).value = itemMargin;
+        row.getCell(16).numFmt = '0.0"%"';
+        row.getCell(16).alignment = { horizontal: "right" };
+        row.getCell(16).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FF047857" } };
+
+        // Col F: Unit Price (Sell) (DYNAMIC FORMULA: =O{parentRowIdx}*(1+P{parentRowIdx}/100))
+        const expectedUnitSell = expectedBaseTotal * (1 + itemMargin / 100);
+        row.getCell(6).value = {
+          formula: `O${parentRowIdx}*(1+P${parentRowIdx}/100)`,
+          result: expectedUnitSell,
+        };
+        row.getCell(6).numFmt = '"Rp "#,##0';
+        row.getCell(6).alignment = { horizontal: "right" };
+
+        // Col G: Amount (Sell) (DYNAMIC FORMULA: =E{parentRowIdx}*F{parentRowIdx})
+        const expectedAmountSell = parentQty * expectedUnitSell;
+        row.getCell(7).value = {
+          formula: `E${parentRowIdx}*F${parentRowIdx}`,
+          result: expectedAmountSell,
+        };
+        row.getCell(7).numFmt = '"Rp "#,##0';
+        row.getCell(7).alignment = { horizontal: "right" };
+        row.getCell(7).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FF047857" } };
+
+        for (let c = 1; c <= 16; c++) {
+          row.getCell(c).border = THIN_BORDER;
+          if (c !== 7 && c !== 15) {
+            row.getCell(c).font = { name: "Segoe UI", size: 9 };
+          }
+        }
+      } else {
+        // Client View (No Internal Costing)
+        const expectedBaseTotal = item.specs.reduce((sum, spc) => {
+          const isVol = (spc.length_l || 0) > 0 && (spc.height_h || 0) > 0;
+          const effQty = isVol ? spc.length_l * spc.height_h * spc.factor : parentQty * spc.factor;
+          return sum + effQty * (spc.baseCostUnitPrice || 0);
+        }, 0);
+        const expectedUnitSell = expectedBaseTotal * (1 + itemMargin / 100);
+        const expectedAmountSell = parentQty * expectedUnitSell;
+
+        // Col F: Unit Price
+        row.getCell(6).value = expectedUnitSell;
+        row.getCell(6).numFmt = '"Rp "#,##0';
+        row.getCell(6).alignment = { horizontal: "right" };
+
+        // Col G: Total Amount (DYNAMIC FORMULA: =E{parentRowIdx}*F{parentRowIdx})
+        row.getCell(7).value = {
+          formula: `E${parentRowIdx}*F${parentRowIdx}`,
+          result: expectedAmountSell,
+        };
+        row.getCell(7).numFmt = '"Rp "#,##0';
+        row.getCell(7).alignment = { horizontal: "right" };
+        row.getCell(7).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FF047857" } };
+
+        for (let c = 1; c <= 7; c++) {
+          row.getCell(c).border = THIN_BORDER;
+          if (c !== 7) {
+            row.getCell(c).font = { name: "Segoe UI", size: 9 };
+          }
+        }
+        currentRowIdx++;
+
+        // Sub specs for client view
+        if (item.specs.length > 1) {
+          item.specs.slice(1).forEach((spc) => {
+            const subRow = sheet.getRow(currentRowIdx);
+            subRow.getCell(1).value = "";
+            subRow.getCell(2).value = `  ↳ ${spc.specName}`;
+            subRow.getCell(2).font = { name: "Segoe UI", size: 8, italic: true, color: { argb: "FF64748B" } };
+            subRow.getCell(3).value = spc.specName;
+            subRow.getCell(4).value = "-";
+            subRow.getCell(4).alignment = { horizontal: "center" };
+            subRow.getCell(5).value = "-";
+            subRow.getCell(5).alignment = { horizontal: "center" };
+            subRow.getCell(6).value = "-";
+            subRow.getCell(7).value = "-";
+
+            for (let c = 1; c <= 7; c++) {
+              subRow.getCell(c).border = THIN_BORDER;
+              subRow.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+            }
+            currentRowIdx++;
+          });
+        }
+      }
+    });
+
+    // Section Subtotal Row (DYNAMIC FORMULA)
+    const subRow = sheet.getRow(currentRowIdx);
+    if (includeInternal) {
+      sheet.mergeCells(`A${currentRowIdx}:F${currentRowIdx}`);
+      subRow.getCell(1).value = `SUBTOTAL ${sec.sectionName.toUpperCase()}:`;
+      subRow.getCell(1).alignment = { horizontal: "right" };
+      subRow.getCell(1).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FF334155" } };
+
+      // Subtotal Selling (Col G)
+      const sellFormula = itemParentRows.length > 0 ? itemParentRows.map((r) => `G${r}`).join("+") : "0";
+      const expectedSecSell = sec.items.reduce((sum, it) => {
+        const m = it.profitMarginPercent !== undefined ? it.profitMarginPercent : (sec.profitMarginPercent || 30);
+        const b = it.specs.reduce((acc, s) => {
+          const isVol = (s.length_l || 0) > 0 && (s.height_h || 0) > 0;
+          return acc + (isVol ? s.length_l * s.height_h * s.factor : it.qty * s.factor) * (s.baseCostUnitPrice || 0);
+        }, 0);
+        return sum + it.qty * b * (1 + m / 100);
+      }, 0);
+
+      subRow.getCell(7).value = {
+        formula: sellFormula,
+        result: expectedSecSell,
+      };
+      subRow.getCell(7).numFmt = '"Rp "#,##0';
+      subRow.getCell(7).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FF047857" } };
+      subRow.getCell(7).alignment = { horizontal: "right" };
+
+      for (let c = 8; c <= 14; c++) {
+        subRow.getCell(c).value = "-";
+        subRow.getCell(c).alignment = { horizontal: "center" };
+        subRow.getCell(c).font = { color: { argb: "FF94A3B8" } };
+      }
+
+      // Subtotal HPP (Col O)
+      const hppFormula = itemParentRows.length > 0 ? itemParentRows.map((r) => `O${r}`).join("+") : "0";
+      const expectedSecHpp = sec.items.reduce((sum, it) => {
+        return sum + it.specs.reduce((acc, s) => {
+          const isVol = (s.length_l || 0) > 0 && (s.height_h || 0) > 0;
+          return acc + (isVol ? s.length_l * s.height_h * s.factor : it.qty * s.factor) * (s.baseCostUnitPrice || 0);
+        }, 0);
+      }, 0);
+
+      subRow.getCell(15).value = {
+        formula: hppFormula,
+        result: expectedSecHpp,
+      };
+      subRow.getCell(15).numFmt = '"Rp "#,##0';
+      subRow.getCell(15).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFB45309" } };
+      subRow.getCell(15).alignment = { horizontal: "right" };
+
+      subRow.getCell(16).value = `${sec.profitMarginPercent || 30}%`;
+      subRow.getCell(16).alignment = { horizontal: "center" };
+      subRow.getCell(16).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FF64748B" } };
+
+      for (let c = 1; c <= 16; c++) {
+        subRow.getCell(c).fill = SUMMARY_FILL;
+        subRow.getCell(c).border = THIN_BORDER;
+      }
+    } else {
+      sheet.mergeCells(`A${currentRowIdx}:F${currentRowIdx}`);
+      subRow.getCell(1).value = `SUBTOTAL ${sec.sectionName.toUpperCase()}:`;
+      subRow.getCell(1).alignment = { horizontal: "right" };
+      subRow.getCell(1).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FF334155" } };
+
+      const sellFormula = itemParentRows.length > 0 ? itemParentRows.map((r) => `G${r}`).join("+") : "0";
+      const expectedSecSell = sec.items.reduce((sum, it) => {
+        const m = it.profitMarginPercent !== undefined ? it.profitMarginPercent : (sec.profitMarginPercent || 30);
+        const b = it.specs.reduce((acc, s) => {
+          const isVol = (s.length_l || 0) > 0 && (s.height_h || 0) > 0;
+          return acc + (isVol ? s.length_l * s.height_h * s.factor : it.qty * s.factor) * (s.baseCostUnitPrice || 0);
+        }, 0);
+        return sum + it.qty * b * (1 + m / 100);
+      }, 0);
+
+      subRow.getCell(7).value = {
+        formula: sellFormula,
+        result: expectedSecSell,
+      };
+      subRow.getCell(7).numFmt = '"Rp "#,##0';
+      subRow.getCell(7).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FF047857" } };
+      subRow.getCell(7).alignment = { horizontal: "right" };
+
+      for (let c = 1; c <= 7; c++) {
+        subRow.getCell(c).fill = SUMMARY_FILL;
+        subRow.getCell(c).border = THIN_BORDER;
+      }
+    }
+
+    sectionSubtotalRows.push({ rowIdx: currentRowIdx, secName: sec.sectionName });
+    currentRowIdx++;
+  });
+
+  // Empty separator
+  currentRowIdx++;
+
+  // 4. REKAPITULASI & FINANCIAL SUMMARY BLOCK (DYNAMIC ACTIVE FORMULAS)
+  const recapColSpan = includeInternal ? "O" : "F";
+  const recapTargetCol = includeInternal ? "P" : "G";
+  const numRecapCols = includeInternal ? 16 : 7;
+
+  // 1. Subtotal Nilai Pekerjaan (Selling)
+  sheet.mergeCells(`A${currentRowIdx}:${recapColSpan}${currentRowIdx}`);
+  sheet.getCell(`A${currentRowIdx}`).value = "TOTAL NILAI PEKERJAAN (PENJUALAN):";
+  sheet.getCell(`A${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true };
+  sheet.getCell(`A${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  const totalSellFormula = sectionSubtotalRows.length > 0 ? sectionSubtotalRows.map((s) => `G${s.rowIdx}`).join("+") : "0";
+  const totalSellExpected = revision.sections.reduce((sum, sec) => {
+    return sum + sec.items.reduce((itemSum, it) => {
+      const m = it.profitMarginPercent !== undefined ? it.profitMarginPercent : (sec.profitMarginPercent || 30);
+      const b = it.specs.reduce((acc, s) => {
+        const isVol = (s.length_l || 0) > 0 && (s.height_h || 0) > 0;
+        return acc + (isVol ? s.length_l * s.height_h * s.factor : it.qty * s.factor) * (s.baseCostUnitPrice || 0);
+      }, 0);
+      return itemSum + it.qty * b * (1 + m / 100);
+    }, 0);
+  }, 0);
+
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).value = {
+    formula: totalSellFormula,
+    result: totalSellExpected,
+  };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).numFmt = '"Rp "#,##0';
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FF1D4ED8" } };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  for (let c = 1; c <= numRecapCols; c++) {
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).fill = SUMMARY_FILL;
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).border = THIN_BORDER;
+  }
+  const sellRowIdx = currentRowIdx;
+  currentRowIdx++;
+
+  // If includeInternal, show HPP and Profit rows
+  if (includeInternal) {
+    // 2. Subtotal HPP
+    sheet.mergeCells(`A${currentRowIdx}:${recapColSpan}${currentRowIdx}`);
+    sheet.getCell(`A${currentRowIdx}`).value = "TOTAL BIAYA MODAL (HPP):";
+    sheet.getCell(`A${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FFB45309" } };
+    sheet.getCell(`A${currentRowIdx}`).alignment = { horizontal: "right" };
+
+    const totalHppFormula = sectionSubtotalRows.length > 0 ? sectionSubtotalRows.map((s) => `O${s.rowIdx}`).join("+") : "0";
+    const totalHppExpected = revision.sections.reduce((sum, sec) => {
+      return sum + sec.items.reduce((itemSum, it) => {
+        return itemSum + it.specs.reduce((acc, s) => {
+          const isVol = (s.length_l || 0) > 0 && (s.height_h || 0) > 0;
+          return acc + (isVol ? s.length_l * s.height_h * s.factor : it.qty * s.factor) * (s.baseCostUnitPrice || 0);
+        }, 0);
+      }, 0);
+    }, 0);
+
+    sheet.getCell(`${recapTargetCol}${currentRowIdx}`).value = {
+      formula: totalHppFormula,
+      result: totalHppExpected,
+    };
+    sheet.getCell(`${recapTargetCol}${currentRowIdx}`).numFmt = '"Rp "#,##0';
+    sheet.getCell(`${recapTargetCol}${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FFB45309" } };
+    sheet.getCell(`${recapTargetCol}${currentRowIdx}`).alignment = { horizontal: "right" };
+
+    for (let c = 1; c <= numRecapCols; c++) {
+      sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).fill = SUMMARY_FILL;
+      sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).border = THIN_BORDER;
+    }
+    const hppRowIdx = currentRowIdx;
+    currentRowIdx++;
+
+    // 3. Estimasi Margin Kotor
+    sheet.mergeCells(`A${currentRowIdx}:${recapColSpan}${currentRowIdx}`);
+    sheet.getCell(`A${currentRowIdx}`).value = "ESTIMASI MARGIN KOTOR (GROSS PROFIT):";
+    sheet.getCell(`A${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FF047857" } };
+    sheet.getCell(`A${currentRowIdx}`).alignment = { horizontal: "right" };
+
+    sheet.getCell(`${recapTargetCol}${currentRowIdx}`).value = {
+      formula: `${recapTargetCol}${sellRowIdx}-${recapTargetCol}${hppRowIdx}`,
+      result: totalSellExpected - totalHppExpected,
+    };
+    sheet.getCell(`${recapTargetCol}${currentRowIdx}`).numFmt = '"Rp "#,##0';
+    sheet.getCell(`${recapTargetCol}${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FF047857" } };
+    sheet.getCell(`${recapTargetCol}${currentRowIdx}`).alignment = { horizontal: "right" };
+
+    for (let c = 1; c <= numRecapCols; c++) {
+      sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).fill = SUMMARY_FILL;
+      sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).border = THIN_BORDER;
+    }
+    currentRowIdx++;
+  }
+
+  // Contingencies
+  const contPct = revision.contingencyPercent ?? 5.0;
+  sheet.mergeCells(`A${currentRowIdx}:${recapColSpan}${currentRowIdx}`);
+  sheet.getCell(`A${currentRowIdx}`).value = `CONTINGENCIES (${contPct}%):`;
+  sheet.getCell(`A${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true };
+  sheet.getCell(`A${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  const contVal = totalSellExpected * (contPct / 100);
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).value = {
+    formula: `${recapTargetCol}${sellRowIdx}*${contPct / 100}`,
+    result: contVal,
+  };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).numFmt = '"Rp "#,##0';
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  for (let c = 1; c <= numRecapCols; c++) {
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).fill = SUMMARY_FILL;
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).border = THIN_BORDER;
+  }
+  const contRowIdx = currentRowIdx;
+  currentRowIdx++;
+
+  // Overhead & Profit
+  const overheadPct = revision.overheadProfitPercent ?? 10.0;
+  sheet.mergeCells(`A${currentRowIdx}:${recapColSpan}${currentRowIdx}`);
+  sheet.getCell(`A${currentRowIdx}`).value = `OVERHEAD & PROFIT (${overheadPct}%):`;
+  sheet.getCell(`A${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true };
+  sheet.getCell(`A${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  const overheadVal = totalSellExpected * (overheadPct / 100);
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).value = {
+    formula: `${recapTargetCol}${sellRowIdx}*${overheadPct / 100}`,
+    result: overheadVal,
+  };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).numFmt = '"Rp "#,##0';
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  for (let c = 1; c <= numRecapCols; c++) {
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).fill = SUMMARY_FILL;
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).border = THIN_BORDER;
+  }
+  const overheadRowIdx = currentRowIdx;
+  currentRowIdx++;
+
+  // Total Sebelum PPN
+  sheet.mergeCells(`A${currentRowIdx}:${recapColSpan}${currentRowIdx}`);
+  sheet.getCell(`A${currentRowIdx}`).value = "TOTAL SEBELUM PPN:";
+  sheet.getCell(`A${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true };
+  sheet.getCell(`A${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  const preTaxExpected = totalSellExpected + contVal + overheadVal;
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).value = {
+    formula: `${recapTargetCol}${sellRowIdx}+${recapTargetCol}${contRowIdx}+${recapTargetCol}${overheadRowIdx}`,
+    result: preTaxExpected,
+  };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).numFmt = '"Rp "#,##0';
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  for (let c = 1; c <= numRecapCols; c++) {
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).fill = SUMMARY_FILL;
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).border = THIN_BORDER;
+  }
+  const preTaxRowIdx = currentRowIdx;
+  currentRowIdx++;
+
+  // PPN 11%
+  const isPpn = revision.usePpn !== false;
+  sheet.mergeCells(`A${currentRowIdx}:${recapColSpan}${currentRowIdx}`);
+  sheet.getCell(`A${currentRowIdx}`).value = `PPN 11% (${isPpn ? "TERAPKAN" : "NON-PPN"}):`;
+  sheet.getCell(`A${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true };
+  sheet.getCell(`A${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  const ppnVal = isPpn ? preTaxExpected * 0.11 : 0;
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).value = {
+    formula: isPpn ? `${recapTargetCol}${preTaxRowIdx}*0.11` : "0",
+    result: ppnVal,
+  };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).numFmt = '"Rp "#,##0';
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).font = { name: "Segoe UI", size: 10, bold: true };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  for (let c = 1; c <= numRecapCols; c++) {
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).fill = SUMMARY_FILL;
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).border = THIN_BORDER;
+  }
+  const ppnRowIdx = currentRowIdx;
+  currentRowIdx++;
+
+  // GRAND TOTAL
+  sheet.mergeCells(`A${currentRowIdx}:${recapColSpan}${currentRowIdx}`);
+  sheet.getCell(`A${currentRowIdx}`).value = "GRAND TOTAL PENAWARAN (ESTIMATE):";
+  sheet.getCell(`A${currentRowIdx}`).font = { name: "Segoe UI", size: 11, bold: true, color: { argb: "FF0F172A" } };
+  sheet.getCell(`A${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).value = {
+    formula: `${recapTargetCol}${preTaxRowIdx}+${recapTargetCol}${ppnRowIdx}`,
+    result: preTaxExpected + ppnVal,
+  };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).numFmt = '"Rp "#,##0';
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).font = { name: "Segoe UI", size: 11, bold: true, color: { argb: "FFB45309" } };
+  sheet.getCell(`${recapTargetCol}${currentRowIdx}`).alignment = { horizontal: "right" };
+
+  for (let c = 1; c <= numRecapCols; c++) {
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).fill = GRAND_TOTAL_FILL;
+    sheet.getCell(`${String.fromCharCode(64 + c)}${currentRowIdx}`).border = THIN_BORDER;
+  }
+
+  // Column Widths
+  sheet.columns = includeInternal
+    ? [
+        { width: 7 },  // No
+        { width: 32 }, // Item Description
+        { width: 28 }, // Specification
+        { width: 10 }, // Unit
+        { width: 10 }, // Qty
+        { width: 18 }, // Unit Price (Sell)
+        { width: 20 }, // Amount (Sell)
+        { width: 12 }, // Length
+        { width: 12 }, // Width
+        { width: 12 }, // Height
+        { width: 10 }, // Factor
+        { width: 14 }, // Model
+        { width: 18 }, // Base Cost / Unit
+        { width: 18 }, // Base Amount
+        { width: 20 }, // Total Base (HPP)
+        { width: 12 }, // % Profit
+      ]
+    : [
+        { width: 7 },  // No
+        { width: 36 }, // Item Description
+        { width: 32 }, // Specification
+        { width: 10 }, // Unit
+        { width: 12 }, // Qty
+        { width: 22 }, // Unit Price
+        { width: 24 }, // Total Amount
+      ];
+
+  downloadWorkbook(workbook, `RAB_Interior_${project.projectCode}_${revision.name || "Rev.01"}.xlsx`);
 }
 
 // ---------------- PDF EXPORT ----------------
@@ -105,6 +785,8 @@ export async function exportInteriorToPdf(
     unit: "mm",
     format: "a4",
   });
+
+  await setupAptosFont(doc);
 
   const startY = await drawRakitcoLetterhead(
     doc,
@@ -134,7 +816,7 @@ export async function exportInteriorToPdf(
     revision.sections.forEach((sec, sIdx) => {
       tableBody.push([
         { 
-          content: `SEKSI ${sIdx + 1}: ${sec.sectionName.toUpperCase()}`, 
+          content: sec.sectionName.toUpperCase(), 
           colSpan: 16, 
           styles: { 
             fillColor: [241, 245, 249], 
@@ -284,7 +966,7 @@ export async function exportInteriorToPdf(
     revision.sections.forEach((sec, sIdx) => {
       tableBody.push([
         {
-          content: `SEKSI ${sIdx + 1}: ${sec.sectionName.toUpperCase()}`,
+          content: sec.sectionName.toUpperCase(),
           colSpan: 7,
           styles: {
             fillColor: [241, 245, 249],

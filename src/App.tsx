@@ -136,6 +136,41 @@ export default function App() {
     );
   };
 
+  const handleDeleteInteriorProject = (projectId: string) => {
+    setInteriorProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setEditingInteriorProject((prev) => (prev && prev.id === projectId ? null : prev));
+  };
+
+  const handleDeleteInteriorDraft = (projectId: string, revisionId: string) => {
+    setInteriorProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        const currentRevs = p.revisions || [];
+        const remaining = currentRevs.filter((r) => r.id !== revisionId);
+        if (remaining.length === 0) {
+          const fallbackRev: InteriorRABRevision = {
+            id: `rev-${p.id}-${Date.now()}`,
+            name: "Initial Draft",
+            date: new Date().toISOString().split("T")[0],
+            version: 1,
+            isDraft: true,
+            usePpn: false,
+            sections: [],
+            grandTotal: 0
+          };
+          return {
+            ...p,
+            revisions: [fallbackRev]
+          };
+        }
+        return {
+          ...p,
+          revisions: remaining
+        };
+      })
+    );
+  };
+
 
   // Handlers for Category Management
   const handleAddCategory = (category: string) => {
@@ -574,6 +609,11 @@ export default function App() {
     setVendors((prev) => prev.filter((v) => v.id !== id));
   };
 
+  const handleDeleteProject = (projectId: string) => {
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setEditingProject((prev) => (prev && prev.id === projectId ? null : prev));
+  };
+
   const getMenuLabel = () => {
     switch (activeMenu) {
       case "project-list":
@@ -637,6 +677,7 @@ export default function App() {
               onCreateNewProject={handleCreateNewProject}
               onUpdateProjectStatus={handleUpdateProjectStatus}
               onUpdateProject={handleUpdateProject}
+              onDeleteProject={handleDeleteProject}
             />
           )}
 
@@ -649,6 +690,7 @@ export default function App() {
               onCreateRevision={handleCreateRevision}
               onDuplicateRevision={handleDuplicateRevision}
               onDeleteRevision={handleDeleteRevision}
+              onDeleteProject={handleDeleteProject}
             />
           )}
 
@@ -814,6 +856,7 @@ export default function App() {
               }}
               onUpdateProjectStatus={handleUpdateInteriorProjectStatus}
               onUpdateInteriorProject={handleUpdateInteriorProject}
+              onDeleteInteriorProject={handleDeleteInteriorProject}
             />
           )}
           {activeMenu === "interior-rab-list" && (
@@ -821,6 +864,8 @@ export default function App() {
               projects={interiorProjects}
               onOpenDraft={handleOpenInteriorRabDraft}
               onCreateProject={handleCreateInteriorProject}
+              onDeleteDraft={handleDeleteInteriorDraft}
+              onDeleteProject={handleDeleteInteriorProject}
             />
           )}
           {activeMenu === "interior-master-db" && (

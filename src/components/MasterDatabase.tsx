@@ -15,6 +15,7 @@ import { MasterCostItem, WorkCategory, ItemSpecification } from "../types";
 import { ExportDropdown } from "./ExportDropdown";
 import { exportMasterDatabaseToExcel } from "../utils/excelExport";
 import { exportMasterDatabaseToPdf } from "../utils/pdfExport";
+import { DualScrollTable } from "./DualScrollTable";
 
 interface MasterDatabaseProps {
   masterItems: MasterCostItem[];
@@ -279,8 +280,8 @@ export const MasterDatabase: React.FC<MasterDatabaseProps> = ({
             </h3>
           </div>
 
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left border-collapse text-xs">
+          <DualScrollTable className="flex-1">
+            <table className="w-full text-left border-collapse text-xs min-w-[1000px]">
               <thead>
                 <tr className="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b border-slate-200 select-none">
                   <th className="py-2.5 px-3 align-top w-28 whitespace-nowrap">Item Code</th>
@@ -402,7 +403,7 @@ export const MasterDatabase: React.FC<MasterDatabaseProps> = ({
                 )}
               </tbody>
             </table>
-          </div>
+          </DualScrollTable>
 
           {/* Table summary bar */}
           <div className="bg-slate-900 text-white p-3 px-4 flex justify-between items-center text-xs">

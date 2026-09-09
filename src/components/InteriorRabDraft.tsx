@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   InteriorProject, 
   InteriorRABRevision, 
@@ -21,11 +21,14 @@ import {
   CheckCircle, 
   X, 
   ArrowRight, 
-  Info 
+  Info,
+  Maximize2,
+  Minimize2
 } from "lucide-react";
 import { ExportDropdown } from "./ExportDropdown";
 import { exportInteriorToExcel, exportInteriorToPdf } from "../utils/interiorExport";
 import { SpecCombobox } from "./SpecCombobox";
+import { DualScrollTable } from "./DualScrollTable";
 
 interface Props {
   project: InteriorProject;
@@ -81,6 +84,17 @@ export const InteriorRabDraft: React.FC<Props> = ({ project, initialRevisionId, 
   const [saveAsTitle, setSaveAsTitle] = useState("");
   const [saveAsNotes, setSaveAsNotes] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isTableMaximized, setIsTableMaximized] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isTableMaximized) {
+        setIsTableMaximized(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isTableMaximized]);
 
   // Revision sequence calculations
   let maxRevisionNum = 0;
@@ -553,11 +567,73 @@ export const InteriorRabDraft: React.FC<Props> = ({ project, initialRevisionId, 
               {showInternal ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
               <span>{showInternal ? "Hide Internal (HPP)" : "Unhide Internal (HPP)"}</span>
             </button>
+
+            <button
+              onClick={() => setIsTableMaximized(!isTableMaximized)}
+              className={`text-[11px] border px-2.5 py-1 rounded font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs ${
+                isTableMaximized
+                  ? "bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"
+              }`}
+              title={isTableMaximized ? "Minimize (Kembali ke tampilan normal - Esc)" : "Maximize (Buka layar penuh untuk editing luas)"}
+            >
+              {isTableMaximized ? (
+                <>
+                  <Minimize2 className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Minimize</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Maximize</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        <div className="border border-slate-300 bg-white shadow-xs rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className={
+          isTableMaximized
+            ? "fixed inset-0 z-50 bg-white flex flex-col overflow-hidden shadow-2xl"
+            : "border border-slate-300 bg-white shadow-xs rounded-lg overflow-hidden"
+        }>
+          {/* Fullscreen Header Bar (Shown when maximized) */}
+          {isTableMaximized && (
+            <div className="bg-slate-900 text-white px-5 py-2.5 flex items-center justify-between shrink-0 border-b border-slate-700">
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-xs uppercase tracking-tight text-white flex items-center gap-2">
+                  <Calculator className="w-4 h-4 text-emerald-400" />
+                  Interior RAB Draft (Full-Screen Mode)
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                  {project.projectCode} • {project.name}
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  ESC UNTUK MINIMIZE
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <button 
+                  onClick={() => setShowInternal(!showInternal)}
+                  className="text-xs bg-slate-800 border border-slate-700 px-2.5 py-1 rounded text-slate-200 hover:bg-slate-700 font-medium transition cursor-pointer flex items-center gap-1.5"
+                >
+                  {showInternal ? <EyeOff className="w-3.5 h-3.5 text-slate-400" /> : <Eye className="w-3.5 h-3.5 text-slate-400" />}
+                  <span>{showInternal ? "Hide HPP" : "Unhide HPP"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsTableMaximized(false)}
+                  className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded text-xs flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                  title="Kembali ke tampilan normal (Esc)"
+                >
+                  <Minimize2 className="w-3.5 h-3.5" />
+                  <span>Minimize View</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <DualScrollTable className={isTableMaximized ? "flex-1 w-full overflow-auto" : ""}>
             <div className="inline-block min-w-max">
           <div className="flex items-center bg-slate-800 text-white text-xs font-bold divide-x divide-slate-600 border-b border-slate-700 sticky top-0 z-20">
             <div className="w-12 py-3 px-2 text-center">No</div>
@@ -817,10 +893,10 @@ export const InteriorRabDraft: React.FC<Props> = ({ project, initialRevisionId, 
             ))}
           </div>
             </div>
-          </div>
+          </DualScrollTable>
 
           {/* TABLE CONTROLS BAR: REVISION INFO, CONTINGENCIES, OVERHEAD, & TAX */}
-          <div className="flex flex-wrap justify-between items-center bg-slate-50 border-t border-slate-200 px-4 py-3 gap-4">
+          <div className="flex flex-wrap justify-between items-center bg-slate-50 border-t border-slate-200 px-4 py-3 gap-4 shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-slate-600">
                 Active Revision:
@@ -869,7 +945,7 @@ export const InteriorRabDraft: React.FC<Props> = ({ project, initialRevisionId, 
           </div>
 
           {/* HIGH DENSITY TABLE FOOTER (SLATE-900) */}
-          <div className="bg-slate-900 text-white p-4 flex flex-wrap justify-between items-center gap-4 rounded-b-lg">
+          <div className="bg-slate-900 text-white p-4 flex flex-wrap justify-between items-center gap-4 rounded-b-lg shrink-0">
             <div className="flex gap-8">
               <div>
                 <div className="text-[10px] uppercase text-slate-400 tracking-wider">

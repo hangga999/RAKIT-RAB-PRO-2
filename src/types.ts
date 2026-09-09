@@ -46,6 +46,7 @@ export interface RabItemEntry {
   id: string;
   masterItemId?: string;
   specId?: string;
+  sectionName?: string; // Header section e.g. 'Lantai 1', 'Lantai 2', 'Area Ruang Tamu', etc.
   workCategory: WorkCategory;
   itemName: string;
   specification?: string; // Text input directly next to Work Item, auto-filled from Master DB and editable
@@ -58,6 +59,7 @@ export interface RabItemEntry {
   totalPrice: number;
   notes?: string;
   isCustom?: boolean;
+  specRows?: { id: string; specName: string }[];
 }
 
 export type DesignStyle =
