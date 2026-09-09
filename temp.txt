@@ -1,0 +1,101 @@
+295:                {sec.items.map((item, itemIdx) => {
+296-                  const baseTotal = calcItemBaseTotal(item);
+297-                  const sellUnit = calcItemSellingUnitPrice(item, sec.profitMarginPercent);
+298-                  const sellAmount = calcItemSellingAmount(item, sec.profitMarginPercent);
+299-                  const actualProfit = baseTotal > 0 ? ((sellAmount / baseTotal) * 100).toFixed(0) : "0";
+300-
+301-                  return (
+302-                    <React.Fragment key={item.id}>
+303-                      <div className="flex bg-white divide-x divide-slate-200 text-sm hover:bg-slate-50">
+304-                        <div className="w-12 py-2 px-2 text-center text-slate-500 font-semibold">{itemIdx + 1}</div>
+305-                        <div className="w-64 py-2 px-2 font-semibold text-slate-800">
+306-                           <input type="text" value={item.description} onChange={e => updateItem(sec.id, item.id, "description", e.target.value)} className="w-full bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none p-0 placeholder-slate-300" placeholder="Work Item Description" />
+307-                        </div>
+308-                        <div className="w-64 py-2 px-2">
+309-                           <button onClick={() => addSpecRow(sec.id, item.id)} className="text-[10px] uppercase font-bold text-slate-400 hover:text-emerald-600 tracking-wider flex items-center gap-1 cursor-pointer">+ Spec Sub-Row</button>
+310-                        </div>
+311-                        <div className="w-16 py-2 px-2">
+312-                          <input type="text" value={item.unit} onChange={e => updateItem(sec.id, item.id, "unit", e.target.value)} className="w-full text-center bg-transparent border-none focus:ring-0 p-0" />
+313-                        </div>
+314-                        <div className="w-20 py-2 px-2">
+315-                          <input type="number" value={item.qty || ""} onChange={e => updateItem(sec.id, item.id, "qty", Number(e.target.value))} className="w-full text-center bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-800" />
+316-                        </div>
+317-                        <div className="w-32 py-2 px-2 text-right text-slate-700">
+318-                          {sellUnit.toLocaleString("id-ID", {maximumFractionDigits:0})}
+319-                        </div>
+320-                        <div className="w-32 py-2 px-2 text-right font-bold text-slate-900">
+321-                          {sellAmount.toLocaleString("id-ID", {maximumFractionDigits:0})}
+322-                        </div>
+323-                        
+324-                        {showInternal && (
+325-                          <>
+326-                            <div className="w-[500px] bg-slate-50" />
+327-                            <div className="w-32 py-2 px-2 text-right font-bold text-amber-600 bg-amber-50">
+328-                              {baseTotal.toLocaleString("id-ID", {maximumFractionDigits:0})}
+329-                            </div>
+330-                            <div className="w-24 py-2 px-2 text-center font-bold text-emerald-600 bg-emerald-50">
+331-                              {actualProfit}%
+332-                            </div>
+333-                          </>
+334-                        )}
+335-                      </div>
+336-
+337-                      {item.specs.map((spc) => {
+338-                        const spcBaseAmt = calcSpecBaseAmount(spc, item.qty);
+339-                        return (
+340-                          <div key={spc.id} className="flex bg-white divide-x divide-slate-200 text-xs text-slate-600 border-b border-dashed border-slate-200">
+341-                             <div className="w-12 bg-slate-50" />
+342-                             <div className="w-64 bg-slate-50" />
+343-                             <div className="w-64 py-1 px-2">
+344-                                <input list="spec-db" type="text" value={spc.specName} onChange={e => handleSpecSelect(sec.id, item.id, spc.id, e.target.value)} className="w-full text-xs bg-transparent border-none p-0 focus:ring-0" placeholder="Material specification..." />
+345-                             </div>
+346-                             <div className="w-16 bg-slate-50" />
+347-                             <div className="w-20 bg-slate-50" />
+348-                             <div className="w-32 bg-slate-50" />
+349-                             <div className="w-32 bg-slate-50" />
+350-                             
+351-                             {showInternal && (
+352-                               <>
+353-                                 <div className="w-24 py-1 px-1">
+354-                                    <input type="number" step="0.01" value={spc.length_l || ""} onChange={e => updateSpec(sec.id, item.id, spc.id, "length_l", Number(e.target.value))} className="w-full text-center text-xs border border-slate-200 rounded p-1" placeholder="L" />
+355-                                 </div>
+356-                                 <div className="w-24 py-1 px-1">
+357-                                    <input type="number" step="0.01" value={spc.width_w || ""} onChange={e => updateSpec(sec.id, item.id, spc.id, "width_w", Number(e.target.value))} className="w-full text-center text-xs border border-slate-200 rounded p-1" placeholder="W" />
+358-                                 </div>
+359-                                 <div className="w-24 py-1 px-1">
+360-                                    <input type="number" step="0.01" value={spc.height_h || ""} onChange={e => updateSpec(sec.id, item.id, spc.id, "height_h", Number(e.target.value))} className="w-full text-center text-xs border border-slate-200 rounded p-1" placeholder="H" />
+361-                                 </div>
+362-                                 <div className="w-20 py-1 px-1">
+363-                                    <input type="number" step="0.01" value={spc.factor || ""} onChange={e => updateSpec(sec.id, item.id, spc.id, "factor", Number(e.target.value))} className="w-full text-center text-xs border border-slate-200 rounded p-1" placeholder="Fac" />
+364-                                 </div>
+365-                                 <div className="w-32 py-1 px-1">
+366-                                    <input type="text" value={spc.model} onChange={e => updateSpec(sec.id, item.id, spc.id, "model", e.target.value)} className="w-full text-center text-xs border border-slate-200 rounded p-1" placeholder="Model" />
+367-                                 </div>
+368-                                 <div className="w-32 py-1 px-2 flex items-center justify-end">
+369-                                    <input type="number" value={spc.baseCostUnitPrice || ""} onChange={e => updateSpec(sec.id, item.id, spc.id, "baseCostUnitPrice", Number(e.target.value))} className="w-24 text-right text-xs border border-slate-200 rounded p-1 font-semibold text-slate-800" />
+370-                                 </div>
+371-                                 <div className="w-32 py-1 px-2 text-right flex items-center justify-end text-slate-500">
+372-                                    {spcBaseAmt.toLocaleString("id-ID", {maximumFractionDigits:0})}
+373-                                 </div>
+374-                                 <div className="w-32 bg-slate-50" />
+375-                                 <div className="w-24 bg-slate-50" />
+376-                               </>
+377-                             )}
+378-                          </div>
+379-                        )
+380-                      })}
+381-                      <div className="bg-white border-b-2 border-slate-300 pt-1 pb-3 pl-14">
+382-                        <button onClick={() => addItem(sec.id)} className="text-[10px] font-bold text-slate-400 bg-slate-100 hover:bg-slate-200 hover:text-slate-700 px-3 py-1 rounded transition cursor-pointer">+ ADD WORK ITEM</button>
+383-                      </div>
+384-                    </React.Fragment>
+385-                  );
+386-                })}
+387-              </React.Fragment>
+388-            ))}
+389-          </div>
+390-        </div>
+391-
+392-        <button onClick={addSection} className="mt-6 flex items-center gap-2 px-6 py-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 font-bold hover:bg-white hover:text-emerald-600 hover:border-emerald-300 transition cursor-pointer">
+393-          <Plus className="w-5 h-5" /> ADD NEW SECTION (E.g. MEP, ARCHITECT)
+394-        </button>
+395-      </div>

@@ -1,0 +1,8 @@
+{
+  "name": "Remix RAB Cost Estimator \u0026 BoQ Desktop",
+  "description": "Comprehensive Windows desktop application architecture and prototype for architectural \u0026 interior Cost Estimation (RAB / BoQ) with S-Curve scheduling and Master Costing database.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
